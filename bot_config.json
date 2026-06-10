@@ -1,0 +1,18 @@
+{
+    "is_running": true,
+    "dry_run": true,
+    "stake_amount_thb": 20.0,
+    "stop_loss_pct": -5.0,
+    "take_profit_pct": 10.0,
+    "max_open_trades": 3,
+    "trade_direction": "long",
+    "leverage": 1,
+    "symbols": [
+        "BTC/THB",
+        "ETH/THB",
+        "KUB/THB",
+        "XRP/THB",
+        "USDT/THB"
+    ],
+    "timeframe": "15"
+}

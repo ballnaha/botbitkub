@@ -1,0 +1,148 @@
+@import "tailwindcss";
+
+:root {
+  --background: #080b11;
+  --foreground: #f8fafc;
+  --font-sans: var(--font-sarabun), 'Inter', sans-serif;
+  --font-display: var(--font-outfit), sans-serif;
+  --font-mono: var(--font-mono), monospace;
+}
+
+body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans);
+  min-height: 100vh;
+}
+
+/* Beautiful Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.02);
+    border-radius: 8px;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.18);
+}
+
+/* Glassmorphic Premium Cards */
+.glass-card {
+    background: rgba(13, 17, 28, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    backdrop-filter: blur(20px);
+    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.glass-card:hover {
+    border-color: rgba(16, 185, 129, 0.12);
+    box-shadow: 0 12px 40px 0 rgba(16, 185, 129, 0.04);
+    transform: translateY(-2px);
+}
+
+/* Mock Terminal Styling */
+.terminal-window {
+    background: rgba(8, 11, 17, 0.85);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 14px;
+    overflow: hidden;
+    box-shadow: inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 10px 30px rgba(0, 0, 0, 0.5);
+}
+.terminal-header {
+    background: rgba(13, 17, 28, 0.9);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 10px 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+}
+
+/* Status Pulsing Glow */
+.status-indicator {
+    position: relative;
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+.status-indicator.connected {
+    background-color: #10b981;
+    box-shadow: 0 0 8px #10b981;
+}
+.status-indicator.connected::after {
+    content: '';
+    position: absolute;
+    top: -2px; left: -2px; right: -2px; bottom: -2px;
+    border-radius: 50%;
+    border: 2px solid #10b981;
+    opacity: 0;
+    animation: pulse-ring 1.5s cubic-bezier(0.215, 0.610, 0.355, 1) infinite;
+}
+.status-indicator.disconnected {
+    background-color: #f43f5e;
+    box-shadow: 0 0 8px #f43f5e;
+}
+.status-indicator.disconnected::after {
+    content: '';
+    position: absolute;
+    top: -2px; left: -2px; right: -2px; bottom: -2px;
+    border-radius: 50%;
+    border: 2px solid #f43f5e;
+    opacity: 0;
+    animation: pulse-ring 1.5s cubic-bezier(0.215, 0.610, 0.355, 1) infinite;
+}
+
+@keyframes pulse-ring {
+    0% { transform: scale(0.5); opacity: 0.8; }
+    80%, 100% { transform: scale(2.2); opacity: 0; }
+}
+
+/* Wallet Balance Layout Redesign */
+.balance-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+}
+.balance-item-new {
+    background: rgba(255, 255, 255, 0.015);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    border-radius: 12px;
+    padding: 12px;
+    transition: all 0.2s ease;
+}
+.balance-item-new:hover {
+    background: rgba(255, 255, 255, 0.03);
+    border-color: rgba(255, 255, 255, 0.08);
+}
+.balance-item-new.thb-active {
+    background: rgba(16, 185, 129, 0.03);
+    border-color: rgba(16, 185, 129, 0.15);
+}
+
+/* Active Glow effects */
+.glow-emerald {
+    filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.3));
+}
+.glow-rose {
+    filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.3));
+}
+.glow-blue {
+    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.3));
+}
+
+/* Form Controls Custom Focus */
+.trading-input {
+    background: rgba(8, 11, 17, 0.5);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    transition: all 0.2s ease;
+}
+.trading-input:focus {
+    border-color: #10b981;
+    box-shadow: 0 0 0 2px rgba(16, 185, 129, 0.15);
+}
