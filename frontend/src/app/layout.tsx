@@ -5,14 +5,14 @@ import ThemeRegistry from "./ThemeRegistry";
 
 const sarabun = Sarabun({
   subsets: ["thai", "latin"],
-  weight: ["300", "400", "500", "600", "700", "800"],
+  weight: ["300", "400", "500", "600", "700"],
   display: "block", // Hide text until font is ready
   variable: "--font-sarabun",
 });
 
 const outfit = Outfit({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
   display: "block",
   variable: "--font-outfit",
 });
@@ -36,7 +36,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="th" className={`h-full antialiased ${sarabun.variable} ${outfit.variable} ${firaCode.variable}`}>
-      <body className={`min-h-full flex flex-col bg-[#080b11] text-slate-100 ${sarabun.className}`}>
+      <body className={`min-h-full flex flex-col bg-[#080b11] text-[#f4f7f4] ${sarabun.className}`}>
         <ThemeRegistry>{children}</ThemeRegistry>
       </body>
     </html>

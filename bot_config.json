@@ -1,6 +1,6 @@
 {
-    "is_running": true,
-    "dry_run": true,
+    "is_running": false,
+    "dry_run": false,
     "stake_amount_thb": 20.0,
     "stop_loss_pct": -5.0,
     "take_profit_pct": 10.0,
@@ -10,9 +10,24 @@
     "symbols": [
         "BTC/THB",
         "ETH/THB",
-        "KUB/THB",
+        "SOL/THB",
+        "NEAR/THB",
         "XRP/THB",
-        "USDT/THB"
+        "DOGE/THB",
+        "ADA/THB",
+        "SUI/THB",
+        "OP/THB",
+        "XLM/THB",
+        "BNB/THB",
+        "WLD/THB",
+        "KUB/THB",
+        "ONDO/THB",
+        "GALA/THB",
+        "CRV/THB",
+        "HBAR/THB",
+        "BCH/THB",
+        "BOME/THB",
+        "EL/THB"
     ],
     "timeframe": "15"
 }

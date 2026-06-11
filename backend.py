@@ -379,6 +379,7 @@ class BotToggleRequest(BaseModel):
     stop_loss_pct: float = None
     take_profit_pct: float = None
     max_open_trades: int = None
+    symbols: list[str] = None
 
 class PanicSellRequest(BaseModel):
     symbol: str
@@ -405,8 +406,13 @@ async def save_bot_config(config_req: BotToggleRequest):
     if not bot:
         raise HTTPException(status_code=500, detail="Bot not initialized.")
     
+    mode_changed = False
     if config_req.dry_run is not None:
+        old_dry_run = bot.config.get("dry_run", True)
+        if old_dry_run != config_req.dry_run:
+            mode_changed = True
         bot.config["dry_run"] = config_req.dry_run
+        
     if config_req.stake_amount_thb is not None:
         bot.config["stake_amount_thb"] = config_req.stake_amount_thb
     if config_req.stop_loss_pct is not None:
@@ -415,10 +421,17 @@ async def save_bot_config(config_req: BotToggleRequest):
         bot.config["take_profit_pct"] = config_req.take_profit_pct
     if config_req.max_open_trades is not None:
         bot.config["max_open_trades"] = max(1, config_req.max_open_trades)
+    if config_req.symbols is not None:
+        bot.config["symbols"] = [sym.strip().upper() for sym in config_req.symbols if sym]
     bot.config["trade_direction"] = "long"
     bot.config["leverage"] = 1
         
     bot.save_json("bot_config.json", bot.config)
+    
+    if mode_changed:
+        bot.add_log(f"Trading mode changed to: {'Dry-Run' if bot.config['dry_run'] else 'LIVE'}. Reloading active positions.")
+        bot.load_positions_from_db()
+        
     return {"status": "success", "config": bot.config}
 
 @app.post("/api/bot/toggle")

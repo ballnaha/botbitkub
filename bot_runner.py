@@ -33,12 +33,10 @@ DEFAULT_CONFIG = {
     "trade_direction": "long",
     "leverage": 1,
     "symbols": [
-        "BTC/THB", "ETH/THB", "KUB/THB", "XRP/THB", "USDT/THB",
-        "SOL/THB", "ADA/THB", "DOGE/THB", "NEAR/THB", "SUI/THB",
-        "OP/THB", "XLM/THB", "BNB/THB", "BCH/THB", "UNI/THB",
-        "LINK/THB", "IOST/THB", "SIX/THB", "AVAX/THB", "JFIN/THB",
-        "BONK/THB", "CRV/THB", "GALA/THB", "HBAR/THB", "FET/THB",
-        "CHZ/THB", "JUP/THB", "WLD/THB", "ONDO/THB", "LUNA/THB"
+        "BTC/THB", "ETH/THB", "SOL/THB", "NEAR/THB", "XRP/THB",
+        "DOGE/THB", "ADA/THB", "SUI/THB", "OP/THB", "XLM/THB",
+        "BNB/THB", "WLD/THB", "KUB/THB", "ONDO/THB", "GALA/THB",
+        "CRV/THB", "HBAR/THB", "BCH/THB"
     ],
     "timeframe": "15"  # 15 นาที
 }
@@ -68,10 +66,11 @@ class BotRunner:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Create positions table
+            # Create positions table with mode column
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS positions (
-                    symbol TEXT PRIMARY KEY,
+                    symbol TEXT,
+                    mode TEXT DEFAULT 'Dry-Run',
                     buy_price REAL,
                     buy_time TEXT,
                     amount REAL,
@@ -80,9 +79,43 @@ class BotRunner:
                     pnl_thb REAL,
                     trade_direction TEXT,
                     leverage INTEGER,
-                    margin_mode TEXT
+                    margin_mode TEXT,
+                    PRIMARY KEY (symbol, mode)
                 )
             """)
+            
+            # Check if the table 'positions' already has the 'mode' column (schema migration)
+            cursor.execute("PRAGMA table_info(positions)")
+            cols = [col[1] for col in cursor.fetchall()]
+            if cols and "mode" not in cols:
+                cursor.execute("ALTER TABLE positions RENAME TO positions_old")
+                cursor.execute("""
+                    CREATE TABLE positions (
+                        symbol TEXT,
+                        mode TEXT DEFAULT 'Dry-Run',
+                        buy_price REAL,
+                        buy_time TEXT,
+                        amount REAL,
+                        current_price REAL,
+                        pnl_percent REAL,
+                        pnl_thb REAL,
+                        trade_direction TEXT,
+                        leverage INTEGER,
+                        margin_mode TEXT,
+                        PRIMARY KEY (symbol, mode)
+                    )
+                """)
+                cursor.execute("""
+                    INSERT INTO positions (
+                        symbol, mode, buy_price, buy_time, amount, current_price,
+                        pnl_percent, pnl_thb, trade_direction, leverage, margin_mode
+                    ) SELECT 
+                        symbol, 'Dry-Run', buy_price, buy_time, amount, current_price,
+                        pnl_percent, pnl_thb, trade_direction, leverage, margin_mode
+                    FROM positions_old
+                """)
+                cursor.execute("DROP TABLE positions_old")
+                conn.commit()
             
             # Create trade_history table
             cursor.execute("""
@@ -113,11 +146,12 @@ class BotRunner:
                     for symbol, pos in legacy_positions.items():
                         cursor.execute("""
                             INSERT OR REPLACE INTO positions (
-                                symbol, buy_price, buy_time, amount, current_price,
+                                symbol, mode, buy_price, buy_time, amount, current_price,
                                 pnl_percent, pnl_thb, trade_direction, leverage, margin_mode
-                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """, (
                             symbol,
+                            "Dry-Run",
                             float(pos.get("buy_price", 0.0)),
                             pos.get("buy_time", ""),
                             float(pos.get("amount", 0.0)),
@@ -175,13 +209,15 @@ class BotRunner:
             conn = sqlite3.connect(self.db_path)
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM positions")
+            mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
+            cursor.execute("SELECT * FROM positions WHERE mode = ?", (mode,))
             rows = cursor.fetchall()
             self.positions = {}
             for row in rows:
                 symbol = row["symbol"]
                 self.positions[symbol] = {
                     "symbol": symbol,
+                    "mode": row["mode"] if "mode" in row.keys() else mode,
                     "buy_price": row["buy_price"],
                     "buy_time": row["buy_time"],
                     "amount": row["amount"],
@@ -201,13 +237,15 @@ class BotRunner:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
+            mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
             cursor.execute("""
                 INSERT OR REPLACE INTO positions (
-                    symbol, buy_price, buy_time, amount, current_price,
+                    symbol, mode, buy_price, buy_time, amount, current_price,
                     pnl_percent, pnl_thb, trade_direction, leverage, margin_mode
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 symbol,
+                pos.get("mode", mode),
                 pos["buy_price"],
                 pos["buy_time"],
                 pos["amount"],
@@ -227,7 +265,8 @@ class BotRunner:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            cursor.execute("DELETE FROM positions WHERE symbol = ?", (symbol,))
+            mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
+            cursor.execute("DELETE FROM positions WHERE symbol = ? AND mode = ?", (symbol, mode))
             conn.commit()
             conn.close()
         except Exception as e:
@@ -237,16 +276,17 @@ class BotRunner:
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
-            # Clear table first to ensure removed items are deleted
-            cursor.execute("DELETE FROM positions")
+            mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
+            cursor.execute("DELETE FROM positions WHERE mode = ?", (mode,))
             for symbol, pos in list(self.positions.items()):
                 cursor.execute("""
                     INSERT OR REPLACE INTO positions (
-                        symbol, buy_price, buy_time, amount, current_price,
+                        symbol, mode, buy_price, buy_time, amount, current_price,
                         pnl_percent, pnl_thb, trade_direction, leverage, margin_mode
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     symbol,
+                    pos.get("mode", mode),
                     pos["buy_price"],
                     pos["buy_time"],
                     pos["amount"],
@@ -468,6 +508,7 @@ class BotRunner:
                 
                 self.positions[symbol] = {
                     "symbol": symbol,
+                    "mode": "Dry-Run",
                     "buy_price": last_price,
                     "buy_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                     "amount": crypto_amount,
@@ -491,6 +532,7 @@ class BotRunner:
                         
                         self.positions[symbol] = {
                             "symbol": symbol,
+                            "mode": "LIVE",
                             "buy_price": filled_price,
                             "buy_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                             "amount": filled_amt,

@@ -130,8 +130,8 @@ export default function LoginPage() {
             boxShadow: "0 20px 50px rgba(0, 0, 0, 0.55)",
             overflow: "hidden",
             "&:hover": {
-              borderColor: "rgba(16, 185, 129, 0.2)",
-              boxShadow: "0 24px 60px rgba(16, 185, 129, 0.06)",
+              borderColor: "rgba(0, 193, 106, 0.2)",
+              boxShadow: "0 24px 60px rgba(0, 193, 106, 0.06)",
             }
           }}
         >
@@ -143,10 +143,10 @@ export default function LoginPage() {
                   mb: 2.5,
                   p: 1.5,
                   borderRadius: "16px",
-                  background: "rgba(16, 185, 129, 0.08)",
-                  border: "1px solid rgba(16, 185, 129, 0.15)",
+                  background: "rgba(0, 193, 106, 0.08)",
+                  border: "1px solid rgba(0, 193, 106, 0.15)",
                   color: "primary.main",
-                  filter: "drop-shadow(0 0 12px rgba(16, 185, 129, 0.3))",
+                  filter: "drop-shadow(0 0 12px rgba(0, 193, 106, 0.3))",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
@@ -158,9 +158,9 @@ export default function LoginPage() {
                 variant="h4" 
                 component="h1"
                 sx={{
-                  fontWeight: 800,
-                  letterSpacing: "-0.02em",
-                  background: "linear-gradient(90deg, #ffffff 30%, #e2e8f0 60%, #10b981 100%)",
+                  fontWeight: 600,
+                  letterSpacing: 0,
+                  background: "linear-gradient(90deg, #ffffff 30%, #e2e8f0 60%, #00c16a 100%)",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
                   fontFamily: "Outfit, sans-serif",
@@ -180,13 +180,13 @@ export default function LoginPage() {
                 variant="outlined"
                 sx={{
                   mb: 3,
-                  backgroundColor: "rgba(244, 63, 94, 0.05)",
-                  borderColor: "rgba(244, 63, 94, 0.2)",
-                  color: "#fb7185",
+                  backgroundColor: "rgba(239, 91, 99, 0.05)",
+                  borderColor: "rgba(239, 91, 99, 0.2)",
+                  color: "#ff7a82",
                   borderRadius: "12px",
                   fontSize: "0.75rem",
                   fontWeight: 600,
-                  "& .MuiAlert-icon": { color: "#f43f5e" }
+                  "& .MuiAlert-icon": { color: "#ef5b63" }
                 }}
               >
                 {error}
@@ -224,7 +224,7 @@ export default function LoginPage() {
                       input: {
                         startAdornment: (
                           <InputAdornment position="start">
-                            <User size={18} style={{ color: "#94a3b8", marginRight: "4px" }} />
+                            <User size={18} style={{ color: "#87928a", marginRight: "4px" }} />
                           </InputAdornment>
                         ),
                       },
@@ -261,7 +261,7 @@ export default function LoginPage() {
                       input: {
                         startAdornment: (
                           <InputAdornment position="start">
-                            <Lock size={18} style={{ color: "#94a3b8", marginRight: "4px" }} />
+                            <Lock size={18} style={{ color: "#87928a", marginRight: "4px" }} />
                           </InputAdornment>
                         ),
                       },
@@ -278,14 +278,14 @@ export default function LoginPage() {
                   sx={{
                     py: 1.8,
                     fontSize: "0.875rem",
-                    fontWeight: 800,
+                    fontWeight: 600,
                     borderRadius: "12px",
-                    background: "linear-gradient(90deg, #10b981 0%, #14b8a6 50%, #059669 100%)",
-                    color: "#080b11",
-                    boxShadow: "0 4px 20px rgba(16, 185, 129, 0.2)",
+                    background: "linear-gradient(90deg, #00c16a 0%, #14b8a6 50%, #00a85d 100%)",
+                    color: "#102018",
+                    boxShadow: "0 4px 20px rgba(0, 193, 106, 0.2)",
                     "&:hover": {
-                      background: "linear-gradient(90deg, #34d399 0%, #2dd4bf 50%, #059669 100%)",
-                      boxShadow: "0 6px 25px rgba(16, 185, 129, 0.35)",
+                      background: "linear-gradient(90deg, #1fe385 0%, #2dd4bf 50%, #00a85d 100%)",
+                      boxShadow: "0 6px 25px rgba(0, 193, 106, 0.35)",
                       transform: "scale(1.01)"
                     },
                     "&.Mui-disabled": {

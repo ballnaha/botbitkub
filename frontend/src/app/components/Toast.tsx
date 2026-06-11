@@ -42,17 +42,17 @@ const toastConfig: Record<ToastType, {
 }> = {
   success: {
     icon: <CheckCircle2 size={18} />,
-    accentColor: "#10b981",
-    bgColor: "rgba(16, 185, 129, 0.06)",
-    borderColor: "rgba(16, 185, 129, 0.2)",
-    glowColor: "rgba(16, 185, 129, 0.08)",
+    accentColor: "#00c16a",
+    bgColor: "rgba(0, 193, 106, 0.06)",
+    borderColor: "rgba(0, 193, 106, 0.2)",
+    glowColor: "rgba(0, 193, 106, 0.08)",
   },
   error: {
     icon: <XCircle size={18} />,
-    accentColor: "#f43f5e",
-    bgColor: "rgba(244, 63, 94, 0.06)",
-    borderColor: "rgba(244, 63, 94, 0.2)",
-    glowColor: "rgba(244, 63, 94, 0.08)",
+    accentColor: "#ef5b63",
+    bgColor: "rgba(239, 91, 99, 0.06)",
+    borderColor: "rgba(239, 91, 99, 0.2)",
+    glowColor: "rgba(239, 91, 99, 0.08)",
   },
   warning: {
     icon: <AlertTriangle size={18} />,
@@ -115,15 +115,15 @@ function ToastItem({
         sx={{
           display: "flex",
           alignItems: "flex-start",
-          gap: 1.5,
+          gap: 1,
           p: 2,
           pr: 1.5,
           borderRadius: "14px",
-          backgroundColor: "rgba(13, 19, 33, 0.88)",
+          backgroundColor: "rgba(13, 20, 35, 0.96)",
           backdropFilter: "blur(24px) saturate(1.8)",
           border: `1px solid ${config.borderColor}`,
           boxShadow: `
-            0 8px 32px rgba(0, 0, 0, 0.5),
+            0 9px 32px rgba(0, 0, 0, 0.45),
             0 0 0 1px rgba(255, 255, 255, 0.02),
             inset 0 1px 0 rgba(255, 255, 255, 0.04),
             0 0 20px ${config.glowColor}
@@ -158,9 +158,9 @@ function ToastItem({
         <Box sx={{ flex: 1, minWidth: 0 }}>
           <Typography
             sx={{
-              fontSize: "0.8rem",
-              fontWeight: 700,
-              color: "#f8fafc",
+              fontSize: "0.9rem",
+              fontWeight: 500,
+              color: "#f4f7f4",
               lineHeight: 1.3,
             }}
           >
@@ -169,8 +169,8 @@ function ToastItem({
           {toast.message && (
             <Typography
               sx={{
-                fontSize: "0.72rem",
-                color: "rgba(148, 163, 184, 0.9)",
+                fontSize: "0.82rem",
+                color: "rgba(184, 194, 186, 0.9)",
                 mt: 0.3,
                 lineHeight: 1.4,
               }}
@@ -185,12 +185,12 @@ function ToastItem({
           onClick={() => onRemove(toast.id)}
           size="small"
           sx={{
-            color: "rgba(148, 163, 184, 0.5)",
+            color: "rgba(184, 194, 186, 0.55)",
             p: 0.5,
             mt: -0.3,
             mr: -0.3,
             "&:hover": {
-              color: "#f8fafc",
+              color: "#f4f7f4",
               backgroundColor: "rgba(255, 255, 255, 0.06)",
             },
           }}
@@ -253,7 +253,7 @@ function ToastContainer({
         right: 24,
         zIndex: 9999,
         width: 380,
-        maxWidth: "calc(100vw - 48px)",
+        maxWidth: "calc(100vw - 49px)",
       }}
     >
       <Box sx={{ position: "relative", height: visibleToasts.length > 1 ? 80 + (visibleToasts.length - 1) * 8 : "auto" }}>

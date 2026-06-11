@@ -13,9 +13,9 @@ const theme = createTheme({
   palette: {
     mode: "dark",
     primary: {
-      main: "#10b981", // Emerald green
-      light: "#34d399",
-      dark: "#059669",
+      main: "#00c16a", // Bitkub green
+      light: "#1fe385",
+      dark: "#00a85d",
     },
     secondary: {
       main: "#3b82f6", // Blue
@@ -27,23 +27,28 @@ const theme = createTheme({
       paper: "#10141d",
     },
     text: {
-      primary: "#f8fafc",
-      secondary: "#94a3b8",
+      primary: "#f4f7f4",
+      secondary: "#b8c2ba",
     },
     divider: "rgba(255, 255, 255, 0.05)",
   },
   typography: {
     fontFamily: "var(--font-sarabun), 'Inter', sans-serif",
-    h1: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 700 },
-    h2: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 700 },
-    h3: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 700 },
-    h4: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 600 },
-    h5: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 600 },
-    h6: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 600 },
+    fontSize: 15,
+    h1: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 600 },
+    h2: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 600 },
+    h3: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 600 },
+    h4: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 500 },
+    h5: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 500 },
+    h6: { fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif", fontWeight: 500 },
+    body1: { fontSize: "0.98rem", lineHeight: 1.55 },
+    body2: { fontSize: "0.9rem", lineHeight: 1.5 },
+    caption: { fontSize: "0.8rem", lineHeight: 1.35 },
     button: {
       fontFamily: "var(--font-sarabun), var(--font-outfit), sans-serif",
       textTransform: "none",
-      fontWeight: 700,
+      fontWeight: 500,
+      fontSize: "0.88rem",
     },
   },
   components: {
@@ -51,7 +56,7 @@ const theme = createTheme({
       styleOverrides: {
         root: {
           borderRadius: "12px",
-          fontWeight: 800,
+          fontWeight: 600,
           "&:active": {
             transform: "scale(0.98)",
           },
@@ -70,9 +75,9 @@ const theme = createTheme({
             borderColor: "rgba(255, 255, 255, 0.12) !important",
           },
           "&.Mui-focused fieldset": {
-            borderColor: "#10b981 !important",
+            borderColor: "#00c16a !important",
             borderWidth: "1px",
-            boxShadow: "0 0 12px rgba(16, 185, 129, 0.15)",
+            boxShadow: "0 0 12px rgba(0, 193, 106, 0.15)",
           },
         },
       },
@@ -111,11 +116,11 @@ const theme = createTheme({
         root: {
           "& th": {
             borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
-            fontSize: "0.7rem",
-            fontWeight: 800,
+            fontSize: "0.78rem",
+            fontWeight: 600,
             letterSpacing: "0.05em",
             textTransform: "uppercase",
-            color: "#64748b",
+            color: "#a8b3a9",
             padding: "12px 16px",
           },
         },
@@ -141,7 +146,7 @@ const theme = createTheme({
     MuiChip: {
       styleOverrides: {
         root: {
-          fontWeight: 800,
+          fontWeight: 600,
           borderRadius: "8px",
         },
       },

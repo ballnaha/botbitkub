@@ -1,9 +1,119 @@
+import React, { useEffect, useState, useMemo } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
-import { Autocomplete, Box, Button, Card, CardContent, Chip, CircularProgress, IconButton, InputAdornment, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography } from "@mui/material";
+import { Autocomplete, Box, Button, Card, CardContent, Chip, CircularProgress, Divider, IconButton, InputAdornment, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography } from "@mui/material";
 import { ChevronLeft, ChevronRight, Send, TrendingUp, Wallet } from "lucide-react";
 import type { BalanceItem, TickerData } from "./dashboardTypes";
 
 const MARKET_ROWS_PER_PAGE = 50;
+
+interface CustomInputProps {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  unit: string;
+  isBuy: boolean;
+  disabled?: boolean;
+  placeholder?: string;
+}
+
+function CustomInput({ label, value, onChange, unit, isBuy, disabled = false, placeholder = "0.00" }: CustomInputProps) {
+  return (
+    <Box
+      sx={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        border: "1px solid rgba(255, 255, 255, 0.08)",
+        borderRadius: "9px",
+        backgroundColor: "rgba(255, 255, 255, 0.02)",
+        p: "11px 14px",
+        opacity: disabled ? 0.7 : 1,
+        transition: "border-color 0.15s ease-in-out",
+        "&:focus-within": {
+          borderColor: disabled ? "rgba(255, 255, 255, 0.08)" : (isBuy ? "#00c16a" : "#ef5b63"),
+        },
+        "& input[type=number]": {
+          MozAppearance: "textfield",
+        },
+        "& input[type=number]::-webkit-outer-spin-button, & input[type=number]::-webkit-inner-spin-button": {
+          WebkitAppearance: "none",
+          margin: 0,
+        },
+      }}
+    >
+      <Typography sx={{ fontSize: "0.9rem", color: "text.secondary", whiteSpace: "nowrap", fontWeight: 500 }}>
+        {label}
+      </Typography>
+      <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexGrow: 1, justifyContent: "flex-end" }}>
+        <input
+          type="number"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          disabled={disabled}
+          required={!disabled}
+          step="any"
+          style={{
+            background: "transparent",
+            border: "none",
+            outline: "none",
+            color: disabled ? "rgba(255, 255, 255, 0.5)" : "#fff",
+            textAlign: "right",
+            fontFamily: "monospace",
+            fontSize: "0.95rem",
+            fontWeight: 500,
+            width: "100%",
+          }}
+        />
+        <Typography sx={{ fontSize: "0.9rem", color: "text.secondary", fontWeight: 500, minWidth: "35px", textAlign: "right" }}>
+          {unit}
+        </Typography>
+      </Box>
+    </Box>
+  );
+}
+
+interface PercentageButtonsProps {
+  onPercentClick: (pct: number) => void;
+  isBuy: boolean;
+}
+
+function PercentageButtons({ onPercentClick, isBuy }: PercentageButtonsProps) {
+  return (
+    <Box sx={{ display: "flex", justifyContent: "flex-start", alignItems: "center", mt: 1 }}>
+      <Stack direction="row" spacing={1}>
+        {[25, 50, 75, 100].map((pct) => (
+          <Button
+            key={pct}
+            onClick={() => onPercentClick(pct)}
+            size="small"
+            variant="text"
+            sx={{
+              minWidth: "49px",
+              height: "26px",
+              p: 0,
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              borderRadius: "6px",
+              fontSize: "0.82rem",
+              color: "text.primary",
+              fontFamily: "monospace",
+              fontWeight: 500,
+              textTransform: "none",
+              backgroundColor: "rgba(255, 255, 255, 0.02)",
+              "&:hover": {
+                borderColor: isBuy ? "#00c16a" : "#ef5b63",
+                backgroundColor: isBuy ? "rgba(0, 193, 106, 0.05)" : "rgba(239, 91, 99, 0.05)",
+              }
+            }}
+          >
+            {pct}%
+          </Button>
+        ))}
+      </Stack>
+    </Box>
+  );
+}
+
 
 interface ManualTradeViewProps {
   actionLoading: boolean;
@@ -35,25 +145,235 @@ interface ManualTradeViewProps {
 }
 
 export function ManualTradeView({ actionLoading, balances, calculatePercentage, filterTradeSymbolOptions, filteredMarketTickers, handleOpenConfirmManual, marketPage, marketPageCount, marketSearch, setMarketPage, setMarketSearch, setTradeAmount, setTradePrice, setTradeSide, setTradeSymbol, setTradeType, sortedTickers, tickers, tradeAmount, tradePrice, tradeSide, tradeSymbol, tradeSymbolOptions, tradeType, visibleMarketTickers, wsConnected }: ManualTradeViewProps) {
-  return (
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "7fr 5fr" }, gap: 3, alignItems: "start" }}>
-      <Box>
-        <Stack spacing={3}>
-{/* Manual Trading Form */}
-              <Card>
-                <CardContent sx={{ p: 3 }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1.5, mb: 3, borderBottom: "1px solid rgba(255,255,255,0.05)", pb: 2 }}>
-                    <Send size={18} style={{ color: "#10b981" }} />
-                    <Typography sx={{ fontWeight: 800, fontSize: "0.8rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
-                      ส่งคำสั่งเทรดเอง (Manual Trade)
-                    </Typography>
-                  </Box>
+  
+  // Local States for Buy and Sell forms to prevent overlap
+  const [buyAmount, setBuyAmount] = useState("");
+  const [buyPrice, setBuyPrice] = useState("");
+  const [sellAmount, setSellAmount] = useState("");
+  const [sellPrice, setSellPrice] = useState("");
 
-                  <form onSubmit={handleOpenConfirmManual}>
-                    <Stack spacing={2.5}>
+  // Set default trade symbol only once when options load initially
+  useEffect(() => {
+    if (!tradeSymbol && tradeSymbolOptions.length > 0) {
+      const defaultSym = tradeSymbolOptions.includes("BTC/THB") ? "BTC/THB" : tradeSymbolOptions[0];
+      setTradeSymbol(defaultSym);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tradeSymbolOptions]);
+
+  // Sync initial price from ticker when tradeSymbol changes
+  useEffect(() => {
+    if (tradeSymbol && tickers[tradeSymbol]) {
+      const p = tickers[tradeSymbol].last.toString();
+      setBuyPrice(p);
+      setSellPrice(p);
+    } else {
+      setBuyPrice("");
+      setSellPrice("");
+    }
+    setBuyAmount("");
+    setSellAmount("");
+  }, [tradeSymbol]);
+
+  // Extract base asset (e.g. KUB) and quote asset (e.g. THB)
+  const baseAsset = useMemo(() => {
+    if (!tradeSymbol) return "COIN";
+    return tradeSymbol.split("/")[0];
+  }, [tradeSymbol]);
+
+  const quoteAsset = useMemo(() => {
+    if (!tradeSymbol) return "THB";
+    return tradeSymbol.split("/")[1] || "THB";
+  }, [tradeSymbol]);
+
+  // Extract relevant balances
+  const thbBalance = useMemo(() => {
+    const b = balances.find((x) => x.asset === "THB");
+    return b ? b.free : 0;
+  }, [balances]);
+
+  const baseAssetBalance = useMemo(() => {
+    const b = balances.find((x) => x.asset === baseAsset);
+    return b ? b.free : 0;
+  }, [balances, baseAsset]);
+
+  const visibleBalances = useMemo(() => {
+    return [...balances]
+      .filter((item) => item.asset === "THB" || item.asset === baseAsset || item.total > 0 || item.free > 0 || item.used > 0)
+      .sort((a, b) => {
+        const priority = (asset: string) => {
+          if (asset === "THB") return 0;
+          if (asset === baseAsset) return 1;
+          return 2;
+        };
+
+        const priorityDiff = priority(a.asset) - priority(b.asset);
+        if (priorityDiff !== 0) return priorityDiff;
+        return a.asset.localeCompare(b.asset);
+      });
+  }, [balances, baseAsset]);
+
+  // Percentage Handlers
+  const handleBuyPercent = (pct: number) => {
+    const toSpend = thbBalance * (pct / 100);
+    const formatted = (Math.floor(toSpend * 100) / 100).toString();
+    setBuyAmount(formatted);
+  };
+
+  const handleSellPercent = (pct: number) => {
+    const toSell = baseAssetBalance * (pct / 100);
+    const formatted = (Math.floor(toSell * 100000000) / 100000000).toString();
+    setSellAmount(formatted);
+  };
+
+  // Live Conversion calculations
+  const buyReceiveQty = useMemo(() => {
+    const amount = parseFloat(buyAmount);
+    if (!amount || amount <= 0) return "0.00000000";
+
+    if (tradeType === "limit") {
+      const price = parseFloat(buyPrice);
+      if (!price || price <= 0) return "0.00000000";
+      return (amount / price).toFixed(8);
+    } else {
+      const price = tickers[tradeSymbol]?.last || 0;
+      if (price <= 0) return "0.00000000";
+      return (amount / price).toFixed(8);
+    }
+  }, [buyAmount, buyPrice, tradeType, tickers, tradeSymbol]);
+
+  const sellReceiveThb = useMemo(() => {
+    const amount = parseFloat(sellAmount);
+    if (!amount || amount <= 0) return "0.00";
+
+    if (tradeType === "limit") {
+      const price = parseFloat(sellPrice);
+      if (!price || price <= 0) return "0.00";
+      return (amount * price).toFixed(2);
+    } else {
+      const price = tickers[tradeSymbol]?.last || 0;
+      if (price <= 0) return "0.00";
+      return (amount * price).toFixed(2);
+    }
+  }, [sellAmount, sellPrice, tradeType, tickers, tradeSymbol]);
+
+  // Submission handlers that update parent state and trigger confirmation dialog
+  const submitBuy = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tradeSymbol) return;
+
+    const amountThb = parseFloat(buyAmount);
+    if (!buyAmount || amountThb <= 0) return;
+
+    if (tradeType === "limit") {
+      const price = parseFloat(buyPrice);
+      if (!buyPrice || price <= 0) return;
+    }
+
+    setTradeSide("buy");
+    setTradeAmount(buyAmount);
+    setTradePrice(tradeType === "limit" ? buyPrice : "");
+
+    setTimeout(() => {
+      handleOpenConfirmManual(e);
+    }, 50);
+  };
+
+  const submitSell = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!tradeSymbol) return;
+
+    const amountCoin = parseFloat(sellAmount);
+    if (!sellAmount || amountCoin <= 0) return;
+
+    if (tradeType === "limit") {
+      const price = parseFloat(sellPrice);
+      if (!sellPrice || price <= 0) return;
+    }
+
+    setTradeSide("sell");
+    setTradeAmount(sellAmount);
+    setTradePrice(tradeType === "limit" ? sellPrice : "");
+
+    setTimeout(() => {
+      handleOpenConfirmManual(e);
+    }, 50);
+  };
+
+
+  const getTradingViewSymbol = (sym: string) => {
+    if (!sym) return "BITKUB:BTCTHB";
+    const parts = sym.toUpperCase().split("/");
+    if (parts.length === 2) {
+      return `BITKUB:${parts[0]}${parts[1]}`;
+    }
+    return `BITKUB:${sym.replace("/", "")}`;
+  };
+
+  const tvSymbol = getTradingViewSymbol(tradeSymbol);
+  const iframeSrc = `https://s.tradingview.com/widgetembed/?symbol=${encodeURIComponent(tvSymbol)}&interval=15&theme=dark&style=1&timezone=Asia%2FBangkok&locale=th`;
+
+  return (
+    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "7.2fr 4.8fr" }, gap: 1, alignItems: "start" }}>
+      <Box>
+        <Stack spacing={1.5}>
+          {/* TradingView Live Chart Card */}
+          <Card
+            sx={{
+              background: "rgba(8, 12, 20, 0.72)",
+              backdropFilter: "blur(24px)",
+              border: "1px solid rgba(255, 255, 255, 0.04)",
+              borderRadius: "20px",
+              boxShadow: "0 9px 32px 0 rgba(0, 0, 0, 0.38)",
+              overflow: "hidden"
+            }}
+          >
+            <Box sx={{ p: 2, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+              <Typography sx={{ fontWeight: 600, fontSize: "0.92rem", letterSpacing: "0.05em", color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
+                📈 กราฟราคาเทคนิคอลเรียลไทม์ (Live Chart): {tradeSymbol || "BTC/THB"}
+              </Typography>
+              <Chip
+                size="small"
+                label="TradingView"
+                sx={{
+                  height: 18,
+                  fontSize: "9px",
+                  fontWeight: 500,
+                  backgroundColor: "rgba(255, 255, 255, 0.03)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  color: "text.secondary",
+                  borderRadius: "5px"
+                }}
+              />
+            </Box>
+            <CardContent sx={{ p: 0, height: "480px", position: "relative" }}>
+              <iframe
+                src={iframeSrc}
+                width="100%"
+                height="100%"
+                style={{ border: "none" }}
+                allowFullScreen
+                title="TradingView Chart"
+              />
+            </CardContent>
+          </Card>
+              {/* Manual Trading Form */}
+              <Card
+                sx={{
+                  background: "rgba(8, 12, 20, 0.72)",
+                  backdropFilter: "blur(24px)",
+                  border: "1px solid rgba(255, 255, 255, 0.04)",
+                  borderRadius: "20px",
+                  boxShadow: "0 9px 32px 0 rgba(0, 0, 0, 0.38)"
+                }}
+              >
+                <CardContent sx={{ p: 3 }}>
+                  {/* Trade Controls */}
+                  <Stack spacing={1.5} sx={{ mb: 3 }}>
+                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(0, 1fr) 190px" }, gap: 1.25, alignItems: "stretch" }}>
                       <Box>
-                        <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 1 }}>
-                          เลือกคู่เหรียญ
+                        <Typography sx={{ fontSize: "0.85rem", fontWeight: 500, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 1 }}>
+                          เลือกคู่เหรียญเทรด
                         </Typography>
                         <Autocomplete
                           fullWidth
@@ -67,13 +387,21 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                           forcePopupIcon={false}
                           autoHighlight
                           clearOnEscape
-                          noOptionsText="Type to search"
+                          noOptionsText="ค้นหาไม่พบ"
                           onChange={(_, value) => {
                             setTradeSymbol(value ?? "");
-                            setTradeAmount("");
                           }}
                           renderInput={(params) => (
-                            <TextField {...params} placeholder="Search symbol" />
+                            <TextField
+                              {...params}
+                              placeholder="ค้นหาคู่เหรียญ เช่น BTC/THB"
+                              sx={{
+                                "& .MuiOutlinedInput-root": {
+                                  borderRadius: "12px",
+                                  backgroundColor: "rgba(255, 255, 255, 0.01)"
+                                }
+                              }}
+                            />
                           )}
                           renderOption={(props, sym) => {
                             const data = tickers[sym];
@@ -81,264 +409,371 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
 
                             return (
                               <Box key={sym} component="li" {...optionProps} sx={{ display: "flex", justifyContent: "space-between", width: "100%", alignItems: "center" }}>
-                                <Typography sx={{ fontWeight: 700, fontSize: "0.8rem" }}>{sym}</Typography>
-                                <Typography sx={{ fontSize: "0.7rem", color: (data?.percentage ?? 0) >= 0 ? "primary.main" : "error.main", fontFamily: "monospace", ml: 2 }}>
+                                <Typography sx={{ fontWeight: 500, fontSize: "0.9rem" }}>{sym}</Typography>
+                                <Typography sx={{ fontSize: "0.8rem", color: (data?.percentage ?? 0) >= 0 ? "#00c16a" : "#ef5b63", fontFamily: "monospace", ml: 2 }}>
                                   {data && data.last > 0 ? data.last.toLocaleString(undefined, { minimumFractionDigits: 2 }) : "-"}
                                 </Typography>
                               </Box>
                             );
                           }}
-                          slotProps={{ paper: { sx: { maxHeight: 300 } } }}
+                          slotProps={{ paper: { sx: { maxHeight: 300, borderRadius: "11px" } } }}
                         />
                       </Box>
 
-                      <Box 
-                        sx={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(2, 1fr)",
-                          gap: 2
-                        }}
-                      >
-                        <Box>
-                          <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 1 }}>
-                            ประเภทคำสั่ง
-                          </Typography>
-                          <Select
-                            fullWidth
-                            value={tradeType}
-                            onChange={(e) => {
-                              setTradeType(e.target.value as "market" | "limit");
-                              setTradeAmount("");
-                            }}
-                            size="small"
-                          >
-                            <MenuItem value="market">Market</MenuItem>
-                            <MenuItem value="limit">Limit</MenuItem>
-                          </Select>
-                        </Box>
-
-                        <Box>
-                          <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 1 }}>
-                            ธุรกรรม (ธุรกรรม)
-                          </Typography>
-                          <Select
-                            fullWidth
-                            value={tradeSide}
-                            onChange={(e) => {
-                              setTradeSide(e.target.value as "buy" | "sell");
-                              setTradeAmount("");
-                            }}
-                            size="small"
-                            sx={{
-                              color: tradeSide === "buy" ? "primary.main" : "error.main",
-                              fontWeight: 700
-                            }}
-                          >
-                            <MenuItem value="buy" sx={{ color: "primary.main", fontWeight: 700 }}>ซื้อ (Buy)</MenuItem>
-                            <MenuItem value="sell" sx={{ color: "error.main", fontWeight: 700 }}>ขาย (Sell)</MenuItem>
-                          </Select>
-                        </Box>
-                      </Box>
-
-                      <Box sx={{ width: "100%" }}>
-                        <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 1 }}>
-                          {tradeSide === "buy" && tradeType === "market"
-                            ? "จำนวนเงินที่ซื้อ (บาท THB)"
-                            : `จำนวนเหรียญที่ต้องการ${tradeSide === "buy" ? "ซื้อ" : "ขาย"}`}
+                      <Box sx={{ p: 1.4, borderRadius: "12px", backgroundColor: "rgba(255, 255, 255, 0.018)", border: "1px solid rgba(255, 255, 255, 0.05)", display: "flex", flexDirection: "column", justifyContent: "center", minHeight: 72 }}>
+                        <Typography sx={{ fontSize: "0.76rem", color: "text.secondary", fontWeight: 500 }}>
+                          ราคาล่าสุด
                         </Typography>
-                        
-                        <TextField
-                          fullWidth
-                          placeholder={tradeSide === "buy" && tradeType === "market" ? "เช่น 50" : "เช่น 0.001"}
-                          value={tradeAmount}
-                          onChange={(e) => setTradeAmount(e.target.value)}
-                          required
-                          size="small"
-                          slotProps={{
-                            input: {
-                              style: { fontFamily: "monospace", fontWeight: 600 },
-                              endAdornment: (
-                                <InputAdornment position="end">
-                                  <Typography variant="caption" sx={{ fontWeight: 800, color: "text.secondary" }}>
-                                    {tradeSide === "buy" && tradeType === "market" ? "THB" : (tradeSymbol ? tradeSymbol.split("/")[0] : "COIN")}
-                                  </Typography>
-                                </InputAdornment>
-                              )
-                            }
-                          }}
-                        />
+                        <Typography sx={{ fontSize: "1rem", color: "text.primary", fontFamily: "monospace", fontWeight: 600, mt: 0.3 }}>
+                          {(tickers[tradeSymbol]?.last || 0) > 0 ? tickers[tradeSymbol].last.toLocaleString(undefined, { minimumFractionDigits: 2 }) : "-"}
+                        </Typography>
+                      </Box>
+                    </Box>
 
-                        {/* Percentage shortcuts — Segmented Control */}
-                        <Box
-                          sx={{
-                            mt: 2,
-                            p: 0.5,
-                            borderRadius: "10px",
-                            backgroundColor: "rgba(255, 255, 255, 0.02)",
-                            border: "1px solid rgba(255, 255, 255, 0.04)",
-                            display: "grid",
-                            gridTemplateColumns: "repeat(4, 1fr)",
-                            gap: "4px",
-                          }}
-                        >
-                          {[25, 50, 75, 100].map((pct) => (
+                    <Divider sx={{ borderColor: "rgba(255,255,255,0.06)" }} />
+
+                    <Box>
+                      <Typography sx={{ fontSize: "0.85rem", fontWeight: 500, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 1 }}>
+                        ประเภทคำสั่ง
+                      </Typography>
+                      <Box sx={{ display: "inline-flex", alignItems: "center", gap: 2, borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
+                        {[
+                          { id: "limit", label: "ลิมิต" },
+                          { id: "market", label: "มาร์เก็ต" }
+                        ].map((tab) => {
+                          const isActive = tradeType === tab.id;
+                          return (
                             <Button
-                              key={pct}
-                              onClick={() => calculatePercentage(pct)}
-                              size="small"
-                              variant="text"
+                              key={tab.id}
+                              onClick={() => setTradeType(tab.id as "limit" | "market")}
                               sx={{
-                                py: 1,
-                                fontSize: "0.72rem",
-                                fontWeight: 800,
-                                fontFamily: "monospace",
-                                color: "text.secondary",
-                                borderRadius: "8px",
                                 minWidth: 0,
+                                minHeight: 30,
+                                px: 0,
+                                pb: 0.85,
+                                borderRadius: 0,
                                 position: "relative",
-                                overflow: "hidden",
-                                "&::before": {
+                                textTransform: "none",
+                                color: isActive ? "primary.main" : "text.secondary",
+                                backgroundColor: "transparent",
+                                border: "none",
+                                fontWeight: 600,
+                                "&::after": {
                                   content: '""',
                                   position: "absolute",
-                                  inset: 0,
-                                  borderRadius: "inherit",
-                                  opacity: 0,
-                                  background: "linear-gradient(135deg, rgba(16, 185, 129, 0.15), rgba(20, 184, 166, 0.08))",
+                                  left: 0,
+                                  right: 0,
+                                  bottom: -1,
+                                  height: "2px",
+                                  borderRadius: "2px",
+                                  backgroundColor: isActive ? "primary.main" : "transparent",
                                 },
-                                "&:active": {
-                                  transform: "scale(0.95)",
-                                  color: "#fff",
-                                  "&::before": {
-                                    opacity: 1,
-                                    background: "linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(20, 184, 166, 0.15))",
-                                  },
-                                },
+                                "&:hover": {
+                                  backgroundColor: "transparent",
+                                  color: isActive ? "primary.main" : "text.primary",
+                                }
                               }}
                             >
-                              {pct}%
+                              <Typography sx={{ fontSize: "0.86rem", fontWeight: 600, lineHeight: 1.1 }}>
+                                {tab.label}
+                              </Typography>
                             </Button>
-                          ))}
-                        </Box>
-
-                        <Typography sx={{ fontSize: "10px", color: "text.secondary", mt: 1.5, lineHeight: 1.5 }}>
-                          {tradeSide === "buy" && tradeType === "market"
-                            ? "* สำหรับการซื้อแบบ Market จะระบุเป็นจำนวนเงินบาท (THB)"
-                            : `* การ${tradeSide === "buy" ? "ซื้อ" : "ขาย"}แบบ ${tradeType.toUpperCase()} จะระบุจำนวนเป็นปริมาณเหรียญ`}
-                        </Typography>
+                          );
+                        })}
                       </Box>
+                    </Box>
+                  </Stack>
 
-                      {/* Conditional Limit Price Field */}
-                      {tradeType === "limit" && (
-                        <Box sx={{ width: "100%" }}>
-                          <Typography sx={{ fontSize: "0.75rem", fontWeight: 700, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 1 }}>
-                            ราคารับซื้อ/ขาย (ต่อ 1 เหรียญ)
-                          </Typography>
-                          <TextField
-                            fullWidth
-                            placeholder="ระบุราคาต่อ 1 เหรียญ"
-                            value={tradePrice}
-                            onChange={(e) => setTradePrice(e.target.value)}
-                            required
-                            size="small"
-                            slotProps={{
-                              input: {
-                                style: { fontFamily: "monospace", fontWeight: 600 }
-                              }
+                  {/* Side-by-Side Panels */}
+                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 4 }}>
+                    
+                    {/* Buy Form (ซื้อ) */}
+                    <form onSubmit={submitBuy}>
+                      <Stack spacing={1.25}>
+                        <Stack spacing={0.8} sx={{ mb: 0.5 }}>
+                          <Box 
+                            onClick={() => handleBuyPercent(100)}
+                            sx={{ 
+                              display: "flex", 
+                              justifyContent: "space-between", 
+                              alignItems: "center",
+                              cursor: "pointer",
+                              "&:hover": { opacity: 0.8 }
                             }}
-                          />
-                        </Box>
-                      )}
+                          >
+                            <Typography sx={{ fontSize: "0.85rem", color: "text.secondary", fontWeight: 500 }}>คงเหลือ</Typography>
+                            <Typography sx={{ fontSize: "0.85rem", color: "#00c16a", fontWeight: 500, textDecoration: "underline" }}>
+                              {thbBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} THB
+                            </Typography>
+                          </Box>
+                        </Stack>
 
-                      {/* Submit Trade Button */}
-                      <Button
-                        fullWidth
-                        type="submit"
-                        disabled={actionLoading}
-                        variant="contained"
-                        sx={{
-                          py: 1.6,
-                          fontSize: "0.75rem",
-                          fontWeight: 800,
-                          background: "linear-gradient(90deg, #10b981 0%, #14b8a6 50%, #059669 100%)",
-                          color: "#080b11",
-                          boxShadow: "0 4px 15px rgba(16, 185, 129, 0.15)",
-                          "&.Mui-disabled": {
-                            background: "rgba(255, 255, 255, 0.05)",
-                            color: "rgba(255, 255, 255, 0.3)",
-                          }
-                        }}
-                      >
-                        {actionLoading ? <CircularProgress size={20} color="inherit" /> : "ส่งคำสั่งเทรดทันที"}
-                      </Button>
-                    </Stack>
-                  </form>
+                        <CustomInput
+                          label="จำนวนที่ต้องจ่าย"
+                          value={buyAmount}
+                          onChange={setBuyAmount}
+                          unit="THB"
+                          isBuy={true}
+                          placeholder="0.00"
+                        />
+
+                        <PercentageButtons onPercentClick={handleBuyPercent} isBuy={true} />
+
+                        {tradeType === "limit" ? (
+                          <CustomInput
+                            label={`ราคาต่อ ${baseAsset}`}
+                            value={buyPrice}
+                            onChange={setBuyPrice}
+                            unit="THB"
+                            isBuy={true}
+                            placeholder="0.00"
+                          />
+                        ) : (
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              border: "1px solid rgba(255, 255, 255, 0.04)",
+                              borderRadius: "9px",
+                              backgroundColor: "rgba(255, 255, 255, 0.01)",
+                              p: "11px 14px",
+                              opacity: 0.6
+                            }}
+                          >
+                            <Typography sx={{ fontSize: "0.9rem", color: "text.secondary", fontWeight: 500 }}>
+                              ราคาต่อ {baseAsset}
+                            </Typography>
+                            <Typography sx={{ fontSize: "0.95rem", fontWeight: 500, color: "text.secondary", pr: "35px" }}>
+                              ราคาตลาด (Market)
+                            </Typography>
+                          </Box>
+                        )}
+
+                        <CustomInput
+                          label={`${baseAsset} จำนวนที่จะได้รับ`}
+                          value={buyReceiveQty}
+                          onChange={() => {}}
+                          unit={baseAsset}
+                          isBuy={true}
+                          disabled={true}
+                          placeholder="0.00000000"
+                        />
+
+                        <Button
+                          fullWidth
+                          type="submit"
+                          disabled={actionLoading}
+                          variant="contained"
+                          sx={{
+                            py: 1.5,
+                            fontSize: "1rem",
+                            fontWeight: 600,
+                            backgroundColor: "#00c16a",
+                            color: "#ffffff",
+                            borderRadius: "9px",
+                            textTransform: "none",
+                            "&:hover": {
+                              backgroundColor: "#00a85d",
+                            },
+                            "&.Mui-disabled": {
+                              backgroundColor: "rgba(255, 255, 255, 0.05)",
+                              color: "rgba(255, 255, 255, 0.3)",
+                            }
+                          }}
+                        >
+                          {actionLoading ? <CircularProgress size={20} color="inherit" /> : "ซื้อ"}
+                        </Button>
+                      </Stack>
+                    </form>
+
+                    {/* Sell Form (ขาย) */}
+                    <form onSubmit={submitSell}>
+                      <Stack spacing={1.25}>
+                        <Stack spacing={0.8} sx={{ mb: 0.5 }}>
+                          <Box 
+                            onClick={() => handleSellPercent(100)}
+                            sx={{ 
+                              display: "flex", 
+                              justifyContent: "space-between", 
+                              alignItems: "center",
+                              cursor: "pointer",
+                              "&:hover": { opacity: 0.8 }
+                            }}
+                          >
+                            <Typography sx={{ fontSize: "0.85rem", color: "text.secondary", fontWeight: 500 }}>คงเหลือ</Typography>
+                            <Typography sx={{ fontSize: "0.85rem", color: "#00c16a", fontWeight: 500, textDecoration: "underline" }}>
+                              {baseAssetBalance.toLocaleString(undefined, { minimumFractionDigits: 8, maximumFractionDigits: 8 })} {baseAsset}
+                            </Typography>
+                          </Box>
+                        </Stack>
+
+                        <CustomInput
+                          label="จำนวนที่ต้องขาย"
+                          value={sellAmount}
+                          onChange={setSellAmount}
+                          unit={baseAsset}
+                          isBuy={false}
+                          placeholder="0.00000000"
+                        />
+
+                        <PercentageButtons onPercentClick={handleSellPercent} isBuy={false} />
+
+                        {tradeType === "limit" ? (
+                          <CustomInput
+                            label={`ราคาต่อ ${baseAsset}`}
+                            value={sellPrice}
+                            onChange={setSellPrice}
+                            unit="THB"
+                            isBuy={false}
+                            placeholder="0.00"
+                          />
+                        ) : (
+                          <Box
+                            sx={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              border: "1px solid rgba(255, 255, 255, 0.04)",
+                              borderRadius: "9px",
+                              backgroundColor: "rgba(255, 255, 255, 0.01)",
+                              p: "11px 14px",
+                              opacity: 0.6
+                            }}
+                          >
+                            <Typography sx={{ fontSize: "0.9rem", color: "text.secondary", fontWeight: 500 }}>
+                              ราคาต่อ {baseAsset}
+                            </Typography>
+                            <Typography sx={{ fontSize: "0.95rem", fontWeight: 500, color: "text.secondary", pr: "35px" }}>
+                              ราคาตลาด (Market)
+                            </Typography>
+                          </Box>
+                        )}
+
+                        <CustomInput
+                          label="THB จำนวนที่จะได้รับ"
+                          value={sellReceiveThb}
+                          onChange={() => {}}
+                          unit="THB"
+                          isBuy={false}
+                          disabled={true}
+                          placeholder="0.00"
+                        />
+
+                        <Button
+                          fullWidth
+                          type="submit"
+                          disabled={actionLoading}
+                          variant="contained"
+                          sx={{
+                            py: 1.5,
+                            fontSize: "1rem",
+                            fontWeight: 600,
+                            backgroundColor: "#ef5b63",
+                            color: "#ffffff",
+                            borderRadius: "9px",
+                            textTransform: "none",
+                            "&:hover": {
+                              backgroundColor: "#dc4854",
+                            },
+                            "&.Mui-disabled": {
+                              backgroundColor: "rgba(255, 255, 255, 0.05)",
+                              color: "rgba(255, 255, 255, 0.3)",
+                            }
+                          }}
+                        >
+                          {actionLoading ? <CircularProgress size={20} color="inherit" /> : "ขาย"}
+                        </Button>
+                      </Stack>
+                    </form>
+
+                  </Box>
                 </CardContent>
               </Card>
         </Stack>
       </Box>
 {/* Right Column (Balances & Tickers) */}
           <Box>
-            <Stack spacing={3}>
+            <Stack spacing={1.5}>
               
               {/* Balances Card */}
               <Card>
                 <CardContent sx={{ p: 3 }}>
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)", pb: 2, mb: 2.5 }}>
-                    <Typography sx={{ fontWeight: 800, fontSize: "0.8rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
+                    <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
                       ยอดเงินคงเหลือ (Balances)
                     </Typography>
-                    <Wallet size={18} style={{ color: "#10b981" }} />
+                    <Wallet size={18} style={{ color: "#00c16a" }} />
                   </Box>
 
-                  <Box 
-                    sx={{ 
-                      display: "grid", 
-                      gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", 
-                      gap: 1.5 
-                    }}
-                  >
-                    {balances.length === 0 ? (
-                      <Typography sx={{ color: "text.secondary", fontSize: "0.75rem", py: 2, gridColumn: "1 / -1", textAlign: "center" }}>
+                  {balances.length === 0 ? (
+                    <Typography sx={{ color: "text.secondary", fontSize: "0.85rem", py: 2, textAlign: "center" }}>
                         กำลังดึงข้อมูลยอดเงินคงเหลือ...
-                      </Typography>
-                    ) : (
-                      balances.map((item) => {
-                        const isThb = item.asset === "THB";
-                        return (
-                          <Paper 
-                            key={item.asset} 
-                            elevation={0}
-                            sx={{
-                              p: 1.8,
-                              borderRadius: "12px",
-                              backgroundColor: isThb ? "rgba(16, 185, 129, 0.03)" : "rgba(255, 255, 255, 0.01)",
-                              border: isThb ? "1px solid rgba(16, 185, 129, 0.15)" : "1px solid rgba(255, 255, 255, 0.04)"
-                            }}
-                          >
-                            <Typography sx={{ fontSize: "10px", fontWeight: 800, color: isThb ? "primary.main" : "text.secondary", letterSpacing: "0.05em" }}>
-                              {item.asset}
-                            </Typography>
-                            <Typography sx={{ fontSize: "13px", fontWeight: 800, color: "text.primary", fontFamily: "monospace", mt: 0.5 }}>
-                              {isThb 
-                                ? item.free.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) 
-                                : item.free.toLocaleString(undefined, { maximumFractionDigits: 6 })}
-                            </Typography>
-                            
-                            <Stack spacing={0.2} sx={{ mt: 1.5, pt: 1, borderTop: "1px solid rgba(255,255,255,0.03)" }}>
-                              <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "8px", fontWeight: 700, color: "text.secondary" }}>
-                                <span>LOCKED</span>
-                                <span>{item.used.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
+                    </Typography>
+                  ) : (
+                    <Stack spacing={1.5}>
+                      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 1 }}>
+                        <Paper elevation={0} sx={{ p: 1.6, borderRadius: "12px", backgroundColor: "rgba(0, 193, 106, 0.035)", border: "1px solid rgba(0, 193, 106, 0.16)" }}>
+                          <Typography sx={{ fontSize: "0.76rem", color: "primary.main", fontWeight: 600, letterSpacing: "0.05em" }}>
+                            THB พร้อมใช้
+                          </Typography>
+                          <Typography sx={{ fontSize: "1.08rem", fontWeight: 600, color: "text.primary", fontFamily: "monospace", mt: 0.45 }}>
+                            {thbBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </Typography>
+                        </Paper>
+
+                        <Paper elevation={0} sx={{ p: 1.6, borderRadius: "12px", backgroundColor: "rgba(255, 255, 255, 0.015)", border: "1px solid rgba(255, 255, 255, 0.05)" }}>
+                          <Typography sx={{ fontSize: "0.76rem", color: "text.secondary", fontWeight: 600, letterSpacing: "0.05em" }}>
+                            {baseAsset} พร้อมใช้
+                          </Typography>
+                          <Typography sx={{ fontSize: "1.08rem", fontWeight: 600, color: "text.primary", fontFamily: "monospace", mt: 0.45 }}>
+                            {baseAssetBalance.toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                          </Typography>
+                        </Paper>
+                      </Box>
+
+                      <Box sx={{ display: "grid", gap: 0.65, maxHeight: 260, overflowY: "auto", pr: 0.5 }}>
+                        {visibleBalances.map((item) => {
+                          const isPrimary = item.asset === "THB" || item.asset === baseAsset;
+                          const decimals = item.asset === "THB" ? 2 : 8;
+
+                          return (
+                            <Box
+                              key={item.asset}
+                              sx={{
+                                display: "grid",
+                                gridTemplateColumns: "64px minmax(0, 1fr) minmax(72px, auto)",
+                                gap: 1,
+                                alignItems: "center",
+                                px: 1.2,
+                                py: 0.9,
+                                borderRadius: "10px",
+                                backgroundColor: isPrimary ? "rgba(255, 255, 255, 0.025)" : "rgba(255, 255, 255, 0.012)",
+                                border: "1px solid rgba(255, 255, 255, 0.045)",
+                              }}
+                            >
+                              <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: isPrimary ? "text.primary" : "text.secondary" }}>
+                                {item.asset}
+                              </Typography>
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography sx={{ fontSize: "0.88rem", fontWeight: 600, color: "text.primary", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                  {item.free.toLocaleString(undefined, { maximumFractionDigits: decimals })}
+                                </Typography>
+                                {item.used > 0 && (
+                                  <Typography sx={{ fontSize: "0.7rem", color: "text.secondary", mt: 0.2 }}>
+                                    Locked {item.used.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                                  </Typography>
+                                )}
                               </Box>
-                              <Box sx={{ display: "flex", justifyContent: "space-between", fontSize: "8px", fontWeight: 700, color: "text.secondary" }}>
-                                <span>TOTAL</span>
-                                <span>{item.total.toLocaleString(undefined, { maximumFractionDigits: 4 })}</span>
-                              </Box>
-                            </Stack>
-                          </Paper>
-                        );
-                      })
-                    )}
-                  </Box>
+                              <Typography sx={{ fontSize: "0.74rem", color: "text.secondary", textAlign: "right", fontFamily: "monospace" }}>
+                                Total {item.total.toLocaleString(undefined, { maximumFractionDigits: item.asset === "THB" ? 2 : 6 })}
+                              </Typography>
+                            </Box>
+                          );
+                        })}
+                      </Box>
+                    </Stack>
+                  )}
                 </CardContent>
               </Card>
 
@@ -346,8 +781,8 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
               <Card>
                 <CardContent sx={{ p: 3 }}>
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)", pb: 2, mb: 2 }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
-                      <Typography sx={{ fontWeight: 800, fontSize: "0.8rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
+                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                      <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
                         ราคาตลาดเรียลไทม์
                       </Typography>
                       <Chip
@@ -355,16 +790,16 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                         label={wsConnected ? "LIVE" : "OFFLINE"}
                         sx={{
                           height: 20,
-                          fontSize: "9px",
-                          fontWeight: 800,
+                          fontSize: "10px",
+                          fontWeight: 600,
                           letterSpacing: "0.08em",
-                          backgroundColor: wsConnected ? "rgba(16, 185, 129, 0.1)" : "rgba(244, 63, 94, 0.1)",
-                          color: wsConnected ? "#10b981" : "#f43f5e",
-                          border: wsConnected ? "1px solid rgba(16, 185, 129, 0.2)" : "1px solid rgba(244, 63, 94, 0.2)",
+                          backgroundColor: wsConnected ? "rgba(0, 193, 106, 0.1)" : "rgba(239, 91, 99, 0.1)",
+                          color: wsConnected ? "#00c16a" : "#ef5b63",
+                          border: wsConnected ? "1px solid rgba(0, 193, 106, 0.2)" : "1px solid rgba(239, 91, 99, 0.2)",
                           animation: wsConnected ? "live-pulse 2s ease-in-out infinite" : "none",
                           "@keyframes live-pulse": {
-                            "0%, 100%": { boxShadow: "0 0 0 0 rgba(16, 185, 129, 0)" },
-                            "50%": { boxShadow: "0 0 8px 0 rgba(16, 185, 129, 0.2)" },
+                            "0%, 100%": { boxShadow: "0 0 0 0 rgba(0, 193, 106, 0)" },
+                            "50%": { boxShadow: "0 0 9px 0 rgba(0, 193, 106, 0.2)" },
                           },
                         }}
                       />
@@ -384,7 +819,7 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                     sx={{ mb: 2 }}
                   />
 
-                  <TableContainer sx={{ maxHeight: 420, overflowY: "auto" }}>
+                  <TableContainer sx={{ maxHeight: 600, overflowY: "auto" }}>
                     <Table size="small" stickyHeader sx={{ "& .MuiTableCell-stickyHeader": { backgroundColor: "#0d1321" } }}>
                       <TableHead>
                         <TableRow>
@@ -397,13 +832,13 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                       <TableBody>
                         {sortedTickers.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={4} align="center" sx={{ py: 3, color: "text.secondary", fontSize: "0.75rem" }}>
+                            <TableCell colSpan={4} align="center" sx={{ py: 3, color: "text.secondary", fontSize: "0.85rem" }}>
                               กำลังโหลดข้อมูลราคาคู่เหรียญ...
                             </TableCell>
                           </TableRow>
                         ) : visibleMarketTickers.length === 0 ? (
                           <TableRow>
-                            <TableCell colSpan={4} align="center" sx={{ py: 3, color: "text.secondary", fontSize: "0.75rem" }}>
+                            <TableCell colSpan={4} align="center" sx={{ py: 3, color: "text.secondary", fontSize: "0.85rem" }}>
                               No market pairs found
                             </TableCell>
                           </TableRow>
@@ -411,21 +846,40 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                           visibleMarketTickers.map(([symbol, data]) => {
                               const isPos = data.percentage > 0;
                               const pctColor = isPos ? "primary.main" : (data.percentage < 0 ? "error.main" : "text.secondary");
+                              const isSelected = tradeSymbol === symbol;
                               
                               return (
-                                <TableRow key={symbol}>
-                                  <TableCell sx={{ pl: 0, fontWeight: 700, fontSize: "0.75rem" }}>{symbol}</TableCell>
-                                  <TableCell align="right" sx={{ color: "primary.main", fontWeight: 800, fontFamily: "monospace", fontSize: "0.75rem" }}>
+                                <TableRow 
+                                  key={symbol}
+                                  onClick={() => {
+                                    setTradeSymbol(symbol);
+                                    setTradeAmount("");
+                                  }}
+                                  sx={{
+                                    cursor: "pointer",
+                                    transition: "all 0.15s ease",
+                                    "&:hover": {
+                                      backgroundColor: "rgba(255, 255, 255, 0.04)"
+                                    },
+                                    backgroundColor: isSelected ? "rgba(0, 193, 106, 0.04)" : "transparent",
+                                    "& td": {
+                                      borderLeft: isSelected ? "3px solid #00c16a" : "3px solid transparent",
+                                      transition: "border-left 0.15s ease",
+                                    }
+                                  }}
+                                >
+                                  <TableCell sx={{ pl: 1, fontWeight: 500, fontSize: "0.85rem" }}>{symbol}</TableCell>
+                                  <TableCell align="right" sx={{ color: "primary.main", fontWeight: 600, fontFamily: "monospace", fontSize: "0.85rem" }}>
                                     {data.last.toLocaleString(undefined, { minimumFractionDigits: 2 })}
                                   </TableCell>
-                                  <TableCell align="right" sx={{ color: "text.secondary", fontFamily: "monospace", fontSize: "0.7rem", display: { xs: "none", sm: "table-cell" } }}>
+                                  <TableCell align="right" sx={{ color: "text.secondary", fontFamily: "monospace", fontSize: "0.8rem", display: { xs: "none", sm: "table-cell" } }}>
                                     {data.quoteVolume > 1000000
                                       ? `${(data.quoteVolume / 1000000).toFixed(1)}M`
                                       : data.quoteVolume > 1000
                                         ? `${(data.quoteVolume / 1000).toFixed(1)}K`
                                         : data.quoteVolume.toFixed(0)}
                                   </TableCell>
-                                  <TableCell align="right" sx={{ pr: 0, color: pctColor, fontWeight: 800, fontFamily: "monospace", fontSize: "0.75rem" }}>
+                                  <TableCell align="right" sx={{ pr: 0, color: pctColor, fontWeight: 600, fontFamily: "monospace", fontSize: "0.85rem" }}>
                                     {isPos ? "+" : ""}{data.percentage.toFixed(2)}%
                                   </TableCell>
                                 </TableRow>
@@ -436,8 +890,8 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                     </Table>
                   </TableContainer>
                   {filteredMarketTickers.length > MARKET_ROWS_PER_PAGE && (
-                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1.5, mt: 2 }}>
-                      <Typography sx={{ fontSize: "0.7rem", color: "text.secondary", fontFamily: "monospace" }}>
+                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, mt: 2 }}>
+                      <Typography sx={{ fontSize: "0.8rem", color: "text.secondary", fontFamily: "monospace" }}>
                         {marketPage * MARKET_ROWS_PER_PAGE + 1}-{Math.min((marketPage + 1) * MARKET_ROWS_PER_PAGE, filteredMarketTickers.length)} / {filteredMarketTickers.length}
                       </Typography>
                       <Stack direction="row" spacing={1}>
@@ -452,7 +906,7 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                             </IconButton>
                           </span>
                         </Tooltip>
-                        <Typography sx={{ minWidth: 52, textAlign: "center", alignSelf: "center", fontSize: "0.7rem", color: "text.secondary", fontFamily: "monospace" }}>
+                        <Typography sx={{ minWidth: 52, textAlign: "center", alignSelf: "center", fontSize: "0.8rem", color: "text.secondary", fontFamily: "monospace" }}>
                           {marketPage + 1}/{marketPageCount}
                         </Typography>
                         <Tooltip title="Next page">

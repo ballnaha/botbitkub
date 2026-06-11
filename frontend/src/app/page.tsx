@@ -51,11 +51,13 @@ import {
   ChevronLeft,
   ChevronRight,
   Minus,
-  Plus
+  Plus,
+  Sliders,
 } from "lucide-react";
 import { BotTradeView } from "./components/BotTradeView";
 import { LogsView } from "./components/LogsView";
 import { ManualTradeView } from "./components/ManualTradeView";
+import { SettingsView } from "./components/SettingsView";
 import { useToast } from "./components/Toast";
 import { useBitkubWebSocket } from "./hooks/useBitkubWebSocket";
 
@@ -75,7 +77,7 @@ interface TickerData {
 }
 
 const MARKET_ROWS_PER_PAGE = 50;
-type DashboardView = "bot" | "manual" | "logs";
+type DashboardView = "bot" | "manual" | "logs" | "settings";
 
 interface PositionItem {
   symbol: string;
@@ -141,13 +143,13 @@ function NumberStepper({ value, step, min, onChange, suffix }: NumberStepperProp
             disableUnderline: true,
             endAdornment: suffix ? (
               <InputAdornment position="end">
-                <Typography sx={{ fontSize: "0.68rem", fontWeight: 800, color: "text.secondary" }}>{suffix}</Typography>
+                <Typography sx={{ fontSize: "0.78rem", fontWeight: 600, color: "text.secondary" }}>{suffix}</Typography>
               </InputAdornment>
             ) : undefined,
             inputProps: {
               step,
               min,
-              style: { textAlign: "center", fontFamily: "monospace", fontWeight: 800, padding: "8px 4px" }
+              style: { textAlign: "center", fontFamily: "monospace", fontWeight: 600, padding: "9px 4px" }
             }
           }
         }}
@@ -231,9 +233,9 @@ export default function DashboardPage() {
   const [activeView, setActiveView] = useState<DashboardView>("bot");
 
   const tradeSymbolOptions = useMemo(() => {
-    const symbols = Array.from(new Set(sortedTickers.map(([symbol]) => symbol)));
-    return symbols.length > 0 ? symbols : ["BTC/THB", "ETH/THB", "KUB/THB", "XRP/THB", "USDT/THB"];
-  }, [sortedTickers]);
+    const symbols = Array.from(new Set(Object.keys(tickers)));
+    return symbols.length > 0 ? symbols.sort() : ["BTC/THB", "ETH/THB", "KUB/THB", "XRP/THB", "USDT/THB"];
+  }, [Object.keys(tickers).join(",")]);
   const filterTradeSymbolOptions = useCallback((options: string[], state: { inputValue: string }) => {
     const query = state.inputValue.trim().toUpperCase();
     if (!query) return [];
@@ -348,7 +350,11 @@ export default function DashboardPage() {
         };
 
         if (botConfigDirtyRef.current) {
-          return { ...prev, ...nextStatus };
+          return {
+            ...prev,
+            is_running: nextStatus.is_running,
+            timeframe: nextStatus.timeframe,
+          };
         }
 
         return {
@@ -440,7 +446,7 @@ export default function DashboardPage() {
         pnl_percent: item.pnl_percent !== undefined ? Number(item.pnl_percent) : null,
         reason: item.reason || ""
       }));
-      setHistory(parsed.reverse().slice(0, 10)); // Shows last 10 completed trades
+      setHistory(parsed.reverse());
     } catch (err) {
       addDevLog("ดึงประวัติการเทรดของบอทล้มเหลว", "error");
     }
@@ -558,6 +564,7 @@ export default function DashboardPage() {
           stop_loss_pct: Number(botConfig.stop_loss_pct),
           take_profit_pct: Number(botConfig.take_profit_pct),
           max_open_trades: Number(botConfig.max_open_trades),
+          symbols: botConfig.symbols,
         }),
       });
       if (handleApiError(res)) return;
@@ -792,7 +799,7 @@ export default function DashboardPage() {
             thickness={2}
             sx={{
               color: "primary.main",
-              filter: "drop-shadow(0 0 12px rgba(16, 185, 129, 0.3))",
+              filter: "drop-shadow(0 0 12px rgba(0, 193, 106, 0.3))",
             }}
           />
           <Box
@@ -802,7 +809,7 @@ export default function DashboardPage() {
               left: "50%",
               transform: "translate(-50%, -50%)",
               color: "primary.main",
-              filter: "drop-shadow(0 0 8px rgba(16, 185, 129, 0.4))",
+              filter: "drop-shadow(0 0 9px rgba(0, 193, 106, 0.4))",
             }}
           >
             <Zap size={24} />
@@ -812,8 +819,8 @@ export default function DashboardPage() {
         <Box sx={{ textAlign: "center" }}>
           <Typography
             sx={{
-              fontSize: "0.85rem",
-              fontWeight: 700,
+              fontSize: "0.95rem",
+              fontWeight: 500,
               color: "text.primary",
               letterSpacing: "0.05em",
             }}
@@ -822,7 +829,7 @@ export default function DashboardPage() {
           </Typography>
           <Typography
             sx={{
-              fontSize: "0.7rem",
+              fontSize: "0.8rem",
               color: "text.secondary",
               mt: 0.5,
             }}
@@ -838,13 +845,13 @@ export default function DashboardPage() {
     <Box
       sx={{
         width: "100%",
-        py: 4,
-        px: { xs: 2, sm: 3, md: 4 },
+        py: { xs: 0, sm: 2 },
+        px: { xs: 0, sm: 1.5, md: 2 },
         overflowX: "hidden",
         minHeight: "100vh",
         animation: "dashboard-fade-in 0.5s ease-out",
         "@keyframes dashboard-fade-in": {
-          "0%": { opacity: 0, transform: "translateY(8px)" },
+          "0%": { opacity: 0, transform: "translateY(9px)" },
           "100%": { opacity: 1, transform: "translateY(0)" },
         },
       }}
@@ -869,98 +876,175 @@ export default function DashboardPage() {
         }} 
       />
 
-      <Box sx={{ maxWidth: 1440, mx: "auto", display: "flex", flexDirection: "column", gap: 3 }}>
+      <Box sx={{ width: "100%", maxWidth: "none", mx: 0, display: "flex", flexDirection: "column", gap: { xs: 1, sm: 1.25 }, px: { xs: 1, sm: 0 } }}>
         
-        {/* Header / Navbar */}
+        {/* Header / Navbar — Mobile-optimized sticky header */}
         <Paper
           elevation={0}
           sx={{
+            position: { xs: "sticky", sm: "relative" },
+            top: { xs: 0, sm: "auto" },
+            zIndex: 100,
             display: "flex",
-            flexDirection: { xs: "column", sm: "row" },
+            flexDirection: "row",
             justifyContent: "space-between",
             alignItems: "center",
-            p: 2.5,
-            px: 3,
-            gap: 2,
-            borderRadius: "20px",
-            background: "rgba(13, 19, 33, 0.45)",
-            backdropFilter: "blur(20px)",
+            p: { xs: 1.25, sm: 1.75 },
+            px: { xs: 1.5, sm: 2 },
+            gap: { xs: 0.75, sm: 1.25 },
+            borderRadius: { xs: "0 0 16px 16px", sm: "20px" },
+            background: "rgba(13, 19, 33, 0.78)",
+            backdropFilter: "blur(24px)",
             border: "1px solid rgba(255, 255, 255, 0.04)",
+            borderTop: { xs: "none", sm: "1px solid rgba(255, 255, 255, 0.04)" },
           }}
         >
-          <Box sx={{ display: "flex", alignItems: "center", gap: 2, width: { xs: "100%", sm: "auto" } }}>
+          {/* Left: Logo + Branding */}
+          <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1, sm: 2 }, minWidth: 0, flex: "0 1 auto" }}>
             <Box 
               sx={{ 
-                p: 1.2, 
-                backgroundColor: "rgba(16, 185, 129, 0.08)", 
+                p: { xs: 0.8, sm: 1.2 }, 
+                backgroundColor: "rgba(0, 193, 106, 0.08)", 
                 color: "primary.main", 
-                borderRadius: "14px",
-                filter: "drop-shadow(0 0 10px rgba(16, 185, 129, 0.2))",
-                display: "flex"
+                borderRadius: { xs: "11px", sm: "14px" },
+                filter: "drop-shadow(0 0 11px rgba(0, 193, 106, 0.2))",
+                display: "flex",
+                flexShrink: 0
               }}
             >
-              <Zap size={20} />
+              <Zap size={18} />
             </Box>
-            <Box>
+            <Box sx={{ minWidth: 0 }}>
               <Typography 
-                variant="h6" 
                 sx={{ 
-                  fontWeight: 800, 
+                  fontWeight: 600, 
                   fontFamily: "Outfit, sans-serif",
-                  background: "linear-gradient(90deg, #fff 0%, #e2e8f0 70%, #10b981 100%)",
+                  background: "linear-gradient(90deg, #fff 0%, #e2e8f0 70%, #00c16a 100%)",
                   WebkitBackgroundClip: "text",
                   WebkitTextFillColor: "transparent",
-                  lineHeight: 1.2
+                  lineHeight: 1.2,
+                  fontSize: { xs: "1rem", sm: "1.28rem" },
+                  whiteSpace: "nowrap"
                 }}
               >
                 Bitkub API Hub
               </Typography>
-              <Typography sx={{ fontSize: "9px", color: "text.secondary", fontWeight: 800, letterSpacing: "0.1em", mt: 0.5, fontFamily: "monospace" }}>
+              <Typography sx={{ fontSize: { xs: "9px", sm: "11px" }, color: "text.secondary", fontWeight: 600, letterSpacing: "0.1em", mt: 0.3, fontFamily: "monospace", display: { xs: "none", sm: "block" } }}>
                 DEVELOPER TRADING TERMINAL
               </Typography>
             </Box>
           </Box>
 
-          <Stack direction={{ xs: "column", sm: "row" }} spacing={1.5} sx={{ width: { xs: "100%", sm: "auto" }, justifyContent: "flex-end", alignItems: "center" }}>
-            {/* User Info */}
+          {/* Center: Navigation Links (Desktop only) */}
+          <Box sx={{ display: { xs: "none", md: "flex" }, alignItems: "center", gap: 0.75 }}>
+            {[
+              { id: "bot", label: "Bot Trade", icon: <Bot size={14} /> },
+              { id: "manual", label: "Manual Trade", icon: <Send size={14} /> },
+              { id: "logs", label: "Logs", icon: <Terminal size={14} /> },
+              { id: "settings", label: "Settings", icon: <Sliders size={14} /> },
+            ].map((item) => {
+              const isActive = activeView === item.id;
+              return (
+                <Button
+                  key={item.id}
+                  onClick={() => setActiveView(item.id as DashboardView)}
+                  startIcon={item.icon}
+                  sx={{
+                    fontSize: "13.5px",
+                    fontWeight: isActive ? 600 : 500,
+                    color: isActive ? "primary.main" : "text.secondary",
+                    px: 2,
+                    py: 0.8,
+                    borderRadius: "11px",
+                    backgroundColor: isActive ? "rgba(0, 193, 106, 0.05)" : "transparent",
+                    border: isActive ? "1px solid rgba(0, 193, 106, 0.1)" : "1px solid transparent",
+                    transition: "all 0.2s ease",
+                    textTransform: "none",
+                    "&:hover": {
+                      color: "primary.main",
+                      backgroundColor: "rgba(0, 193, 106, 0.04)",
+                    }
+                  }}
+                >
+                  {item.label}
+                </Button>
+              );
+            })}
+          </Box>
+
+          {/* Right: Status chips + Logout — compact on mobile */}
+          <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.75, sm: 1.5 }, flexShrink: 0 }}>
+            {/* Connection dot indicator (mobile only) */}
+            <Box sx={{ display: { xs: "flex", sm: "none" }, alignItems: "center" }}>
+            <Box sx={{
+                width: 9, height: 9, borderRadius: "50%",
+                backgroundColor: connectionStatus === "connected" ? "#00c16a" : "#ef5b63",
+                boxShadow: connectionStatus === "connected" ? "0 0 6px rgba(0, 193, 106, 0.5)" : "0 0 6px rgba(239, 91, 99, 0.5)",
+                flexShrink: 0
+              }} />
+            </Box>
+
+            {/* Desktop-only chips */}
             <Chip 
-              icon={<User size={14} style={{ color: "#10b981" }} />} 
-              label={`User: ${username}`}
+              icon={<User size={13} style={{ color: "#00c16a" }} />} 
+              label={username}
               variant="outlined"
               sx={{ 
-                fontSize: "11px", 
-                fontWeight: 700, 
+                fontSize: "12px", 
+                fontWeight: 500, 
                 borderColor: "rgba(255, 255, 255, 0.06)", 
                 backgroundColor: "rgba(255, 255, 255, 0.015)",
-                color: "text.primary"
+                color: "text.primary",
+                display: { xs: "none", sm: "inline-flex" },
+                height: 28
               }} 
             />
 
-            {/* System Status */}
             <Chip 
-              icon={<Cpu size={14} style={{ color: "#3b82f6" }} />} 
+              icon={<Cpu size={13} style={{ color: "#3b82f6" }} />} 
               label="SYS: OK"
               variant="outlined"
               sx={{ 
-                fontSize: "11px", 
-                fontWeight: 700, 
+                fontSize: "12px", 
+                fontWeight: 500, 
                 borderColor: "rgba(255, 255, 255, 0.06)", 
                 backgroundColor: "rgba(255, 255, 255, 0.015)",
-                color: "text.primary"
+                color: "text.primary",
+                display: { xs: "none", sm: "inline-flex" },
+                height: 28
               }} 
             />
 
-            {/* Logout Button */}
+            {/* Logout: icon-only on mobile, full button on desktop */}
+            <IconButton
+              onClick={handleLogout}
+              size="small"
+              sx={{
+                display: { xs: "flex", sm: "none" },
+                color: "error.main",
+                border: "1px solid rgba(239, 91, 99, 0.15)",
+                backgroundColor: "rgba(239, 91, 99, 0.03)",
+                borderRadius: "11px",
+                width: 34,
+                height: 34,
+                "&:hover": {
+                  backgroundColor: "rgba(239, 91, 99, 0.1)",
+                }
+              }}
+            >
+              <LogOut size={15} />
+            </IconButton>
             <Button
               onClick={handleLogout}
               variant="outlined"
               startIcon={<LogOut size={14} />}
               sx={{
-                fontSize: "11px",
-                fontWeight: 700,
+                display: { xs: "none", sm: "inline-flex" },
+                fontSize: "12px",
+                fontWeight: 500,
                 color: "error.main",
-                borderColor: "rgba(244, 63, 94, 0.15)",
-                backgroundColor: "rgba(244, 63, 94, 0.03)",
+                borderColor: "rgba(239, 91, 99, 0.15)",
+                backgroundColor: "rgba(239, 91, 99, 0.03)",
                 borderRadius: "12px",
                 px: 2,
                 py: 0.8
@@ -968,7 +1052,7 @@ export default function DashboardPage() {
             >
               ออกจากระบบ
             </Button>
-          </Stack>
+          </Box>
         </Paper>
 
         {/* KPI Metrics Box Layout */}
@@ -976,26 +1060,25 @@ export default function DashboardPage() {
           sx={{
             display: "grid",
             gridTemplateColumns: {
-              xs: "1fr",
-              sm: "repeat(2, 1fr)",
+              xs: "repeat(2, 1fr)",
               md: "repeat(4, 1fr)"
             },
-            gap: 2
+            gap: { xs: 0.75, sm: 1 }
           }}
         >
           {/* Card 1: Available Cash */}
           <Box>
             <Card>
-              <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: 2.5, "&:last-child": { pb: 2.5 } }}>
+              <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: { xs: 1.25, sm: 1.6 }, "&:last-child": { pb: { xs: 1.25, sm: 1.6 } } }}>
                 <Box>
-                  <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                     เงินสด THB พร้อมใช้
                   </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 800, mt: 0.5, color: "primary.main", fontFamily: "monospace", textShadow: "0 0 10px rgba(16, 185, 129, 0.2)" }}>
+                  <Typography variant="h5" sx={{ fontSize: { xs: "1.12rem", sm: "1.32rem" }, fontWeight: 600, mt: 0.5, color: "primary.main", fontFamily: "monospace", textShadow: "0 0 11px rgba(0, 193, 106, 0.2)" }}>
                     {cashThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </Typography>
                 </Box>
-                <Box sx={{ p: 1.5, borderRadius: "12px", backgroundColor: "rgba(16, 185, 129, 0.08)", color: "primary.main", display: "flex" }}>
+                <Box sx={{ p: 1.5, borderRadius: "12px", backgroundColor: "rgba(0, 193, 106, 0.08)", color: "primary.main", display: "flex" }}>
                   <Wallet size={20} />
                 </Box>
               </CardContent>
@@ -1005,9 +1088,9 @@ export default function DashboardPage() {
           {/* Card 2: API Connection */}
           <Box>
             <Card>
-              <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: 2.5, "&:last-child": { pb: 2.5 } }}>
+              <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: { xs: 1.25, sm: 1.6 }, "&:last-child": { pb: { xs: 1.25, sm: 1.6 } } }}>
                 <Box>
-                  <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.8, display: "block" }}>
+                  <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.8, display: "block" }}>
                     Bitkub API Connection
                   </Typography>
                   {connectionStatus === "connected" ? (
@@ -1016,7 +1099,7 @@ export default function DashboardPage() {
                       label="Connected" 
                       color="success" 
                       variant="outlined" 
-                      sx={{ fontSize: "10px", height: "22px", backgroundColor: "rgba(16, 185, 129, 0.08)" }} 
+                      sx={{ fontSize: "11px", height: "22px", backgroundColor: "rgba(0, 193, 106, 0.08)" }} 
                     />
                   ) : (
                     <Tooltip title={connectionMsg}>
@@ -1025,7 +1108,7 @@ export default function DashboardPage() {
                         label="Disconnected" 
                         color="error" 
                         variant="outlined" 
-                        sx={{ fontSize: "10px", height: "22px", backgroundColor: "rgba(244, 63, 94, 0.08)", cursor: "help" }} 
+                        sx={{ fontSize: "11px", height: "22px", backgroundColor: "rgba(239, 91, 99, 0.08)", cursor: "help" }} 
                       />
                     </Tooltip>
                   )}
@@ -1040,9 +1123,9 @@ export default function DashboardPage() {
           {/* Card 3: Auto Bot Run State */}
           <Box>
             <Card>
-              <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: 2.5, "&:last-child": { pb: 2.5 } }}>
+              <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: { xs: 1.25, sm: 1.6 }, "&:last-child": { pb: { xs: 1.25, sm: 1.6 } } }}>
                 <Box>
-                  <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.8, display: "block" }}>
+                  <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.8, display: "block" }}>
                     สถานะบอทอัตโนมัติ
                   </Typography>
                   {botConfig.is_running ? (
@@ -1050,14 +1133,14 @@ export default function DashboardPage() {
                       size="small"
                       label={botConfig.dry_run ? "RUNNING (DRY)" : "RUNNING (LIVE)"} 
                       color="success" 
-                      sx={{ fontSize: "10px", height: "22px", fontWeight: 800 }} 
+                      sx={{ fontSize: "11px", height: "22px", fontWeight: 600 }} 
                     />
                   ) : (
                     <Chip 
                       size="small"
                       label={botConfig.dry_run ? "STOPPED (DRY)" : "STOPPED (LIVE)"} 
                       color="error" 
-                      sx={{ fontSize: "10px", height: "22px", fontWeight: 800 }} 
+                      sx={{ fontSize: "11px", height: "22px", fontWeight: 600 }} 
                     />
                   )}
                 </Box>
@@ -1071,13 +1154,13 @@ export default function DashboardPage() {
           {/* Card 4: Positions Held */}
           <Box>
             <Card>
-              <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: 2.5, "&:last-child": { pb: 2.5 } }}>
+              <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: { xs: 1.25, sm: 1.6 }, "&:last-child": { pb: { xs: 1.25, sm: 1.6 } } }}>
                 <Box>
-                  <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                    ตำแหน่งที่ถือครอง
+                  <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                    เหรียญที่ถืออยู่
                   </Typography>
-                  <Typography variant="h5" sx={{ fontWeight: 800, mt: 0.5, color: "#818cf8", fontFamily: "monospace", textShadow: "0 0 10px rgba(129, 140, 248, 0.2)" }}>
-                    {positions.length} Positions
+                  <Typography variant="h5" sx={{ fontSize: { xs: "1.12rem", sm: "1.32rem" }, fontWeight: 600, mt: 0.5, color: "#818cf8", fontFamily: "monospace", textShadow: "0 0 11px rgba(129, 140, 248, 0.2)" }}>
+                    {positions.length} เหรียญ
                   </Typography>
                 </Box>
                 <Box sx={{ p: 1.5, borderRadius: "12px", backgroundColor: "rgba(129, 140, 248, 0.08)", color: "#818cf8", display: "flex" }}>
@@ -1088,22 +1171,23 @@ export default function DashboardPage() {
           </Box>
         </Box>
 
-        <Paper elevation={0} sx={{ p: 0.75, borderRadius: "16px", background: "rgba(13, 19, 33, 0.45)", border: "1px solid rgba(255, 255, 255, 0.04)", display: "grid", gridTemplateColumns: { xs: "1fr", sm: "repeat(3, 1fr)" }, gap: 0.75 }}>
+        <Paper elevation={0} sx={{ display: { xs: "grid", md: "none" }, p: 0.5, borderRadius: "16px", background: "rgba(13, 19, 33, 0.45)", border: "1px solid rgba(255, 255, 255, 0.04)", gridTemplateColumns: "repeat(4, 1fr)", gap: 0.5 }}>
           {[
             { id: "bot", label: "Bot Trade", icon: <Bot size={15} /> },
             { id: "manual", label: "Manual Trade", icon: <Send size={15} /> },
             { id: "logs", label: "Logs", icon: <Terminal size={15} /> },
+            { id: "settings", label: "Settings", icon: <Sliders size={15} /> },
           ].map((item) => {
             const isActive = activeView === item.id;
             return (
-              <Button key={item.id} onClick={() => setActiveView(item.id as DashboardView)} startIcon={item.icon} variant={isActive ? "contained" : "text"} sx={{ minHeight: 42, borderRadius: "12px", fontSize: "0.75rem", fontWeight: 800, color: isActive ? "#07110d" : "text.secondary", backgroundColor: isActive ? "primary.main" : "rgba(255,255,255,0.015)", boxShadow: isActive ? "0 0 18px rgba(16,185,129,0.18)" : "none" }}>
+              <Button key={item.id} onClick={() => setActiveView(item.id as DashboardView)} startIcon={item.icon} variant={isActive ? "contained" : "text"} sx={{ minHeight: { xs: 38, sm: 42 }, borderRadius: "12px", fontSize: { xs: "0.82rem", sm: "0.82rem" }, fontWeight: 600, color: isActive ? "#17201a" : "text.secondary", backgroundColor: isActive ? "primary.main" : "rgba(255,255,255,0.015)", boxShadow: isActive ? "0 0 19px rgba(16,185,129,0.18)" : "none", px: { xs: 0.75, sm: 1.5 } }}>
                 {item.label}
               </Button>
             );
           })}
         </Paper>
 
-        {activeView === "bot" && <BotTradeView botConfig={botConfig} positions={positions} history={history} handleBotToggle={handleBotToggle} handleSaveBotSettings={handleSaveBotSettings} handleOpenConfirmPanic={handleOpenConfirmPanic} updateBotConfigDraft={updateBotConfigDraft} />}
+        {activeView === "bot" && <BotTradeView botConfig={botConfig} positions={positions} history={history} handleBotToggle={handleBotToggle} handleSaveBotSettings={handleSaveBotSettings} handleOpenConfirmPanic={handleOpenConfirmPanic} updateBotConfigDraft={updateBotConfigDraft} setActiveView={setActiveView} />}
 
         {activeView === "manual" && (
           <ManualTradeView
@@ -1138,6 +1222,16 @@ export default function DashboardPage() {
 
         {activeView === "logs" && <LogsView botLogs={botLogs} botLogsRef={botLogsRef} clearDevLogs={clearDevLogs} devLogs={devLogs} devLogsRef={devLogsRef} />}
 
+        {activeView === "settings" && (
+          <SettingsView
+            botConfig={botConfig}
+            updateBotConfigDraft={updateBotConfigDraft}
+            handleSaveBotSettings={handleSaveBotSettings}
+            actionLoading={actionLoading}
+            allSymbols={tradeSymbolOptions}
+          />
+        )}
+
 
       </Box>
 
@@ -1150,13 +1244,13 @@ export default function DashboardPage() {
         open={confirmManualOpen}
         onClose={() => setConfirmManualOpen(false)}
       >
-        <DialogTitle sx={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: "1.1rem" }} className="text-sky-400 flex items-center gap-2">
+        <DialogTitle sx={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: "1.1rem" }} className="text-sky-400 flex items-center gap-2">
           <Info size={20} /> ยืนยันการส่งคำสั่งเทรด
         </DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ color: "text.secondary", fontSize: "0.85rem", mt: 1, lineHeight: 1.6 }}>
+          <DialogContentText sx={{ color: "text.secondary", fontSize: "0.95rem", mt: 1, lineHeight: 1.6 }}>
             คุณต้องการส่งคำสั่ง <strong>{tradeSide.toUpperCase()} {tradeSymbol}</strong> 
-            ประเภท <strong>{tradeType.toUpperCase()}</strong> จำนวน <strong>{tradeAmount}</strong>
+            ประเภท <strong>{tradeType.toUpperCase()}</strong> จำนวน <strong>{tradeAmount} {tradeSide === "buy" ? "THB" : (tradeSymbol ? tradeSymbol.split("/")[0] : "")}</strong>
             {tradeType === "limit" ? <> ที่ราคา <strong>{tradePrice} THB</strong></> : " ด้วยราคาตลาด"} จริงหรือไม่?
           </DialogContentText>
         </DialogContent>
@@ -1170,7 +1264,7 @@ export default function DashboardPage() {
               backgroundColor: "rgba(255,255,255,0.01)",
               borderRadius: "12px",
               px: 3,
-              fontSize: "0.75rem"
+              fontSize: "0.85rem"
             }}
           >
             ยกเลิก
@@ -1180,12 +1274,12 @@ export default function DashboardPage() {
             autoFocus
             variant="contained"
             sx={{
-              color: "#080b11",
+              color: "#17201a",
               backgroundColor: "primary.main",
               borderRadius: "12px",
               px: 3,
-              fontWeight: 800,
-              fontSize: "0.75rem"
+              fontWeight: 600,
+              fontSize: "0.85rem"
             }}
           >
             ยืนยันส่งคำสั่ง
@@ -1199,15 +1293,15 @@ export default function DashboardPage() {
         onClose={() => setConfirmPanicOpen(false)}
         sx={{
           "& .MuiDialog-paper": {
-            borderColor: "rgba(244,63,94,0.2)"
+            borderColor: "rgba(239, 91, 99, 0.2)"
           }
         }}
       >
-        <DialogTitle sx={{ fontFamily: "Outfit, sans-serif", fontWeight: 800, fontSize: "1.1rem" }} className="text-rose-400 flex items-center gap-2">
-          <Info size={20} style={{ color: "#f43f5e" }} /> ยืนยันการทำ Panic Sell
+        <DialogTitle sx={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: "1.1rem" }} className="text-rose-400 flex items-center gap-2">
+          <Info size={20} style={{ color: "#ef5b63" }} /> ยืนยันการทำ Panic Sell
         </DialogTitle>
         <DialogContent>
-          <DialogContentText sx={{ color: "text.secondary", fontSize: "0.85rem", mt: 1, lineHeight: 1.6 }}>
+          <DialogContentText sx={{ color: "text.secondary", fontSize: "0.95rem", mt: 1, lineHeight: 1.6 }}>
             คุณแน่ใจหรือไม่ที่จะเปิดคำสั่ง <strong>Panic Sell (ขายด่วน) สำหรับ {panicTargetSymbol}</strong>?
             บอทจะส่งคำสั่งขายเหรียญนี้เข้าตลาดทั้งหมดทันทีในราคากระดานปัจจุบัน
           </DialogContentText>
@@ -1222,7 +1316,7 @@ export default function DashboardPage() {
               backgroundColor: "rgba(255,255,255,0.01)",
               borderRadius: "12px",
               px: 3,
-              fontSize: "0.75rem"
+              fontSize: "0.85rem"
             }}
           >
             ยกเลิก
@@ -1236,8 +1330,8 @@ export default function DashboardPage() {
               backgroundColor: "error.main",
               borderRadius: "12px",
               px: 3,
-              fontWeight: 800,
-              fontSize: "0.75rem"
+              fontWeight: 600,
+              fontSize: "0.85rem"
             }}
           >
             ยืนยัน Panic Sell

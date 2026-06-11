@@ -21,7 +21,7 @@ export function LogsView({ botLogs, botLogsRef, clearDevLogs, devLogs, devLogsRe
               xs: "1fr",
               md: "repeat(2, 1fr)"
             },
-            gap: 3
+            gap: 1
           }}
         >
           {/* Developer Logs */}
@@ -32,19 +32,19 @@ export function LogsView({ botLogs, botLogsRef, clearDevLogs, devLogs, devLogsRe
                 borderRadius: "16px",
                 border: "1px solid rgba(255, 255, 255, 0.05)",
                 overflow: "hidden",
-                background: "rgba(8, 11, 17, 0.85)",
+                background: "rgba(8, 12, 20, 0.88)",
                 display: "flex",
                 flexDirection: "column",
-                boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 10px 30px rgba(0, 0, 0, 0.5)"
+                boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 11px 30px rgba(0, 0, 0, 0.5)"
               }}
             >
-              <Box sx={{ px: 2.5, py: 1.5, background: "rgba(13, 17, 28, 0.9)", borderBottom: "1px solid rgba(255, 255, 255, 0.05)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Box sx={{ px: 2.5, py: 1.5, background: "rgba(9, 15, 30, 0.9)", borderBottom: "1px solid rgba(255, 255, 255, 0.05)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <Stack direction="row" spacing={1} sx={{ userSelect: "none" }}>
-                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#f43f5e", width: "9px", height: "9px" }} />
-                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#eab308", width: "9px", height: "9px" }} />
-                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#10b981", width: "9px", height: "9px" }} />
+                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#ef5b63", width: "10px", height: "10px" }} />
+                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#eab308", width: "10px", height: "10px" }} />
+                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#00c16a", width: "10px", height: "10px" }} />
                 </Stack>
-                <Typography sx={{ fontSize: "10px", fontWeight: 800, color: "text.secondary", letterSpacing: "0.05em", fontFamily: "monospace" }}>
+                <Typography sx={{ fontSize: "11px", fontWeight: 600, color: "text.secondary", letterSpacing: "0.05em", fontFamily: "monospace" }}>
                   DEVELOPER SYSTEM LOGS
                 </Typography>
                 <IconButton 
@@ -62,10 +62,10 @@ export function LogsView({ botLogs, botLogsRef, clearDevLogs, devLogs, devLogsRe
                   overflowY: "auto",
                   p: 2,
                   fontFamily: "monospace",
-                  fontSize: "11px",
+                  fontSize: "12px",
                   lineHeight: 1.6,
                   color: "text.primary",
-                  backgroundColor: "rgba(8, 11, 17, 0.95)",
+                  backgroundColor: "rgba(8, 12, 20, 0.95)",
                 }}
                 dangerouslySetInnerHTML={{ __html: devLogs.join("") }}
               />
@@ -80,19 +80,19 @@ export function LogsView({ botLogs, botLogsRef, clearDevLogs, devLogs, devLogsRe
                 borderRadius: "16px",
                 border: "1px solid rgba(255, 255, 255, 0.05)",
                 overflow: "hidden",
-                background: "rgba(8, 11, 17, 0.85)",
+                background: "rgba(8, 12, 20, 0.88)",
                 display: "flex",
                 flexDirection: "column",
-                boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 10px 30px rgba(0, 0, 0, 0.5)"
+                boxShadow: "inset 0 1px 0 0 rgba(255, 255, 255, 0.05), 0 11px 30px rgba(0, 0, 0, 0.5)"
               }}
             >
-              <Box sx={{ px: 2.5, py: 1.5, background: "rgba(13, 17, 28, 0.9)", borderBottom: "1px solid rgba(255, 255, 255, 0.05)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <Box sx={{ px: 2.5, py: 1.5, background: "rgba(9, 15, 30, 0.9)", borderBottom: "1px solid rgba(255, 255, 255, 0.05)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <Stack direction="row" spacing={1} sx={{ userSelect: "none" }}>
-                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#f43f5e", width: "9px", height: "9px" }} />
-                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#eab308", width: "9px", height: "9px" }} />
-                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#10b981", width: "9px", height: "9px" }} />
+                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#ef5b63", width: "10px", height: "10px" }} />
+                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#eab308", width: "10px", height: "10px" }} />
+                  <Box sx={{ w: 9, h: 9, borderRadius: "50%", background: "#00c16a", width: "10px", height: "10px" }} />
                 </Stack>
-                <Typography sx={{ fontSize: "10px", fontWeight: 800, color: "text.secondary", letterSpacing: "0.05em", fontFamily: "monospace" }}>
+                <Typography sx={{ fontSize: "11px", fontWeight: 600, color: "text.secondary", letterSpacing: "0.05em", fontFamily: "monospace" }}>
                   BOT TRADING & ACTIVITY LOGS
                 </Typography>
                 <Terminal size={14} style={{ color: "#3b82f6" }} />
@@ -104,10 +104,10 @@ export function LogsView({ botLogs, botLogsRef, clearDevLogs, devLogs, devLogsRe
                   overflowY: "auto",
                   p: 2,
                   fontFamily: "monospace",
-                  fontSize: "11px",
+                  fontSize: "12px",
                   lineHeight: 1.6,
                   color: "text.primary",
-                  backgroundColor: "rgba(8, 11, 17, 0.95)",
+                  backgroundColor: "rgba(8, 12, 20, 0.95)",
                 }}
                 dangerouslySetInnerHTML={{ __html: botLogs.join("") }}
               />
