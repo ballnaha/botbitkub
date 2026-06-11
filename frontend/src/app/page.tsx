@@ -190,7 +190,8 @@ export default function DashboardPage() {
     trade_direction: "long",
     leverage: 1,
     symbols: [] as string[],
-    timeframe: "15"
+    timeframe: "15",
+    strategy: "multi_indicator"
   });
   const [balances, setBalances] = useState<BalanceItem[]>([]);
   const [tickers, setTickers] = useState<Record<string, TickerData>>({});
@@ -371,6 +372,7 @@ export default function DashboardPage() {
           max_budget_thb: data.max_budget_thb ?? 5000.0,
           trade_direction: data.trade_direction || "long",
           leverage: data.leverage ?? 1,
+          strategy: data.strategy || "multi_indicator",
         };
       });
     } catch (err) {
@@ -573,6 +575,7 @@ export default function DashboardPage() {
           max_open_trades: Number(botConfig.max_open_trades),
           max_budget_thb: Number(botConfig.max_budget_thb),
           symbols: botConfig.symbols,
+          strategy: botConfig.strategy,
         }),
       });
       if (handleApiError(res)) return;
@@ -593,6 +596,7 @@ export default function DashboardPage() {
             leverage: data.config.leverage ?? prev.leverage,
             symbols: data.config.symbols || prev.symbols,
             timeframe: data.config.timeframe || prev.timeframe,
+            strategy: data.config.strategy || prev.strategy,
           }));
         }
         

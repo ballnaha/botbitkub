@@ -9,6 +9,7 @@ import requests
 import pandas as pd
 import numpy as np
 from datetime import datetime
+import importlib
 import strategy
 from dotenv import load_dotenv
 
@@ -61,6 +62,14 @@ class BotRunner:
         # ถ้าเปิดไว้ในคอนฟิก ให้รันเมื่อเริ่มโปรแกรม
         if self.config.get("is_running", False):
             self.start()
+
+    def get_active_strategy(self):
+        strategy_name = self.config.get("strategy", "multi_indicator")
+        try:
+            return importlib.import_module(f"strategies.{strategy_name}")
+        except Exception as e:
+            self.add_log(f"Failed to load strategy '{strategy_name}': {e}. Using default.")
+            return strategy
 
     def init_db(self):
         try:
@@ -489,6 +498,9 @@ class BotRunner:
             try:
                 self.add_log("--- Starting market scan loop ---")
                 
+                # โหลดกลยุทธ์ที่ใช้อยู่ขณะนี้
+                active_strat = self.get_active_strategy()
+                
                 # อัปเดตราคาล่าสุดสำหรับคำนวณ PnL
                 self.update_active_positions_pnl()
                 
@@ -502,14 +514,14 @@ class BotRunner:
                     if df.empty or len(df) < 30:
                         continue
                         
-                    df = strategy.populate_indicators(df)
+                    df = active_strat.populate_indicators(df)
                     
                     # 2. เช็คการออกหรือปิด Position ที่มีอยู่ก่อน
                     if symbol in self.positions:
-                        self.check_and_execute_sell(symbol, df)
+                        self.check_and_execute_sell(symbol, df, active_strat)
                     else:
                         # 3. เช็คการเข้าซื้อใหม่
-                        self.check_and_execute_buy(symbol, df)
+                        self.check_and_execute_buy(symbol, df, active_strat)
                         
                     time.sleep(1)  # ป้องกันโดน Rate Limit
                     
@@ -520,7 +532,7 @@ class BotRunner:
             # รอ 60 วินาที (เช็คสัญญาณทุกๆ 1 นาที)
             self.stop_event.wait(60)
 
-    def check_and_execute_buy(self, symbol, df):
+    def check_and_execute_buy(self, symbol, df, active_strat):
         max_open_trades = int(self.config.get("max_open_trades", 3))
         if len(self.positions) >= max_open_trades:
             self.add_log(f"Max open trades reached ({max_open_trades}). Skip buy for {symbol}.")
@@ -539,7 +551,7 @@ class BotRunner:
             self.add_log(f"Allocated budget limit reached (Used: {current_used_budget:,.2f} THB + Stake: {stake:,.2f} THB > Max: {max_budget:,.2f} THB). Skip buy for {symbol}.")
             return
 
-        if strategy.check_buy_signal(df):
+        if active_strat.check_buy_signal(df):
             last_price = float(df.iloc[-1]["close"])
             
             self.add_log(f"🟢 [BUY SIGNAL] {symbol} at {last_price:,.2f} THB")
@@ -597,7 +609,7 @@ class BotRunner:
                 except Exception as e:
                     self.add_log(f"❌ [LIVE Buy Failed] {symbol}: {str(e)}")
 
-    def check_and_execute_sell(self, symbol, df):
+    def check_and_execute_sell(self, symbol, df, active_strat):
         position = self.positions[symbol]
         last_price = float(df.iloc[-1]["close"])
         buy_price = position["buy_price"]
@@ -606,7 +618,7 @@ class BotRunner:
         pnl_pct = ((last_price - buy_price) / buy_price) * 100
         
         # 1. เช็คสัญญาณขายของกลยุทธ์
-        sell_signal = strategy.check_sell_signal(df)
+        sell_signal = active_strat.check_sell_signal(df)
         
         # 2. เช็ค Stop Loss
         stop_loss_hit = pnl_pct <= self.config["stop_loss_pct"]

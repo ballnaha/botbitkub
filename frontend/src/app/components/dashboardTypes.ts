@@ -59,4 +59,15 @@ export type BotConfig = {
   leverage: number;
   symbols: string[];
   timeframe: string;
+  strategy: string;
 };
+
+export interface StrategyInfo {
+  id: string;
+  name: string;
+  description: string;
+  indicators: string[];
+  risk_level: string;
+  buy_logic: string;
+  sell_logic: string;
+}

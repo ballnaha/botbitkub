@@ -10,6 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
 from bot_runner import BotRunner
+from strategies import get_strategy_list
 import secrets
 
 # Global bot instance
@@ -581,9 +582,14 @@ class BotToggleRequest(BaseModel):
     max_open_trades: int = None
     max_budget_thb: float = None
     symbols: list[str] = None
+    strategy: str = None
 
 class PanicSellRequest(BaseModel):
     symbol: str
+
+@app.get("/api/bot/strategies")
+async def get_bot_strategies():
+    return {"status": "success", "strategies": get_strategy_list()}
 
 @app.get("/api/bot/status")
 async def get_bot_status():
@@ -600,7 +606,8 @@ async def get_bot_status():
         "trade_direction": bot.config.get("trade_direction", "long"),
         "leverage": bot.config.get("leverage", 1),
         "symbols": bot.config.get("symbols", []),
-        "timeframe": bot.config.get("timeframe", "15")
+        "timeframe": bot.config.get("timeframe", "15"),
+        "strategy": bot.config.get("strategy", "multi_indicator")
     }
 
 @app.post("/api/bot/config")
@@ -627,6 +634,8 @@ async def save_bot_config(config_req: BotToggleRequest):
         bot.config["max_budget_thb"] = max(0.0, config_req.max_budget_thb)
     if config_req.symbols is not None:
         bot.config["symbols"] = [sym.strip().upper() for sym in config_req.symbols if sym]
+    if config_req.strategy is not None:
+        bot.config["strategy"] = config_req.strategy
     bot.config["trade_direction"] = "long"
     bot.config["leverage"] = 1
         

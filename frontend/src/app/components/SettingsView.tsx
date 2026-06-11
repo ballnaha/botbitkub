@@ -33,8 +33,9 @@ import {
   Plus,
   Minus,
   Info,
+  Brain,
 } from "lucide-react";
-import type { BotConfig } from "./dashboardTypes";
+import type { BotConfig, StrategyInfo } from "./dashboardTypes";
 
 interface SettingsViewProps {
   botConfig: BotConfig;
@@ -129,6 +130,29 @@ export function SettingsView({
   const [confirmLiveOpen, setConfirmLiveOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedSymbolToAdd, setSelectedSymbolToAdd] = useState<string | null>(null);
+  const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
+  const [strategiesLoading, setStrategiesLoading] = useState(false);
+
+  // Fetch available strategies from backend
+  React.useEffect(() => {
+    const fetchStrategies = async () => {
+      setStrategiesLoading(true);
+      try {
+        const res = await fetch("/api/bot/strategies");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.status === "success") {
+            setStrategies(data.strategies || []);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to fetch strategies", err);
+      } finally {
+        setStrategiesLoading(false);
+      }
+    };
+    fetchStrategies();
+  }, []);
 
   const DEFAULT_SYMBOLS = [
     "BTC/THB", "ETH/THB", "SOL/THB", "NEAR/THB", "XRP/THB",
@@ -285,6 +309,7 @@ export function SettingsView({
               }}
             >
               <Tab icon={<Shield size={14} />} iconPosition="start" label="โหมดการทำงาน" />
+              <Tab icon={<Brain size={14} />} iconPosition="start" label="กลยุทธ์การเทรด" />
               <Tab icon={<Coins size={14} />} iconPosition="start" label="สแกนคู่เหรียญ" />
               <Tab icon={<Activity size={14} />} iconPosition="start" label="พารามิเตอร์เทรด" />
             </Tabs>
@@ -416,8 +441,198 @@ export function SettingsView({
               </Stack>
             )}
 
-            {/* TAB PANEL 1: Coin Scanner Setup */}
+            {/* TAB PANEL 1: Strategy Selection */}
             {tabIndex === 1 && (
+              <Stack spacing={1.5}>
+                <Box>
+                  <Typography
+                    sx={{
+                      fontSize: "0.88rem",
+                      fontWeight: 600,
+                      color: "text.primary",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      mb: 0.5,
+                    }}
+                  >
+                    เลือกกลยุทธ์การเทรด (Trading Strategy)
+                  </Typography>
+                  <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
+                    กลยุทธ์กำหนดเงื่อนไขการเข้าซื้อและขายของบอทตามอินดิเคเตอร์ทางเทคนิค สามารถสลับเปลี่ยนได้ตลอดเวลา
+                  </Typography>
+                </Box>
+
+                {strategiesLoading ? (
+                  <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+                    <Typography sx={{ fontSize: "0.85rem", color: "text.secondary" }}>กำลังโหลดกลยุทธ์...</Typography>
+                  </Box>
+                ) : (
+                  <Stack spacing={1}>
+                    {strategies.map((strat) => {
+                      const isActive = (botConfig.strategy || "multi_indicator") === strat.id;
+                      const riskColors: Record<string, { color: string; label: string }> = {
+                        low: { color: "#00c16a", label: "เสี่ยงต่ำ" },
+                        medium: { color: "#fbbf24", label: "เสี่ยงปานกลาง" },
+                        high: { color: "#ef5b63", label: "เสี่ยงสูง" },
+                      };
+                      const risk = riskColors[strat.risk_level] || riskColors.medium;
+
+                      return (
+                        <Paper
+                          key={strat.id}
+                          onClick={() => updateBotConfigDraft({ strategy: strat.id } as Partial<BotConfig>)}
+                          sx={{
+                            p: 2.5,
+                            borderRadius: "16px",
+                            cursor: "pointer",
+                            backgroundColor: isActive ? "rgba(0, 193, 106, 0.03)" : "rgba(13, 20, 35, 0.3)",
+                            border: isActive ? "1.5px solid rgba(0, 193, 106, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
+                            boxShadow: isActive ? "0 0 20px rgba(0, 193, 106, 0.05)" : "none",
+                            transition: "all 0.25s ease",
+                            "&:hover": {
+                              borderColor: isActive ? "rgba(0, 193, 106, 0.6)" : "rgba(255, 255, 255, 0.1)",
+                              backgroundColor: isActive ? "rgba(0, 193, 106, 0.05)" : "rgba(255, 255, 255, 0.015)",
+                              transform: "translateY(-1px)",
+                            },
+                          }}
+                        >
+                          <Stack spacing={1.5}>
+                            {/* Header */}
+                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
+                              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                                <Box
+                                  sx={{
+                                    width: 32,
+                                    height: 32,
+                                    borderRadius: "10px",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    backgroundColor: isActive ? "rgba(0, 193, 106, 0.1)" : "rgba(255, 255, 255, 0.04)",
+                                    transition: "all 0.2s ease",
+                                  }}
+                                >
+                                  <Brain size={16} style={{ color: isActive ? "#00c16a" : "#94a3b8" }} />
+                                </Box>
+                                <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: isActive ? "primary.main" : "text.primary" }}>
+                                  {strat.name}
+                                </Typography>
+                              </Stack>
+                              <Stack direction="row" spacing={0.5}>
+                                <Chip
+                                  label={risk.label}
+                                  size="small"
+                                  sx={{
+                                    height: 18,
+                                    fontSize: "9px",
+                                    fontWeight: 600,
+                                    backgroundColor: `${risk.color}10`,
+                                    color: risk.color,
+                                    border: `1px solid ${risk.color}30`,
+                                  }}
+                                />
+                                {isActive && (
+                                  <Chip
+                                    label="ACTIVE"
+                                    color="primary"
+                                    size="small"
+                                    sx={{ height: 18, fontSize: "9px", fontWeight: 600 }}
+                                  />
+                                )}
+                              </Stack>
+                            </Box>
+
+                            {/* Description */}
+                            <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", lineHeight: 1.55 }}>
+                              {strat.description}
+                            </Typography>
+
+                            {/* Indicators */}
+                            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                              {strat.indicators.map((ind) => (
+                                <Chip
+                                  key={ind}
+                                  label={ind}
+                                  size="small"
+                                  sx={{
+                                    height: 20,
+                                    fontSize: "0.7rem",
+                                    fontWeight: 500,
+                                    backgroundColor: "rgba(255, 255, 255, 0.02)",
+                                    color: "text.secondary",
+                                    border: "1px solid rgba(255, 255, 255, 0.05)",
+                                    borderRadius: "6px",
+                                  }}
+                                />
+                              ))}
+                            </Box>
+
+                            {/* Buy/Sell Logic — collapsible detail */}
+                            <Box
+                              sx={{
+                                display: "grid",
+                                gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                                gap: 1,
+                                mt: 0.5,
+                              }}
+                            >
+                              <Box
+                                sx={{
+                                  p: 1.5,
+                                  borderRadius: "10px",
+                                  backgroundColor: "rgba(0, 193, 106, 0.02)",
+                                  border: "1px solid rgba(0, 193, 106, 0.06)",
+                                }}
+                              >
+                                <Typography sx={{ fontSize: "0.72rem", fontWeight: 600, color: "#00c16a", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.3 }}>
+                                  🟢 เงื่อนไขซื้อ (Buy)
+                                </Typography>
+                                <Typography sx={{ fontSize: "0.75rem", color: "text.secondary", lineHeight: 1.4 }}>
+                                  {strat.buy_logic}
+                                </Typography>
+                              </Box>
+                              <Box
+                                sx={{
+                                  p: 1.5,
+                                  borderRadius: "10px",
+                                  backgroundColor: "rgba(239, 91, 99, 0.02)",
+                                  border: "1px solid rgba(239, 91, 99, 0.06)",
+                                }}
+                              >
+                                <Typography sx={{ fontSize: "0.72rem", fontWeight: 600, color: "#ef5b63", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.3 }}>
+                                  🔴 เงื่อนไขขาย (Sell)
+                                </Typography>
+                                <Typography sx={{ fontSize: "0.75rem", color: "text.secondary", lineHeight: 1.4 }}>
+                                  {strat.sell_logic}
+                                </Typography>
+                              </Box>
+                            </Box>
+                          </Stack>
+                        </Paper>
+                      );
+                    })}
+                  </Stack>
+                )}
+
+                <Alert
+                  severity="info"
+                  icon={<Info size={16} />}
+                  sx={{
+                    borderRadius: "14px",
+                    backgroundColor: "rgba(255, 255, 255, 0.015)",
+                    border: "1px solid rgba(255, 255, 255, 0.05)",
+                    color: "text.secondary",
+                    fontSize: "0.82rem",
+                    "& .MuiAlert-icon": { color: "#94a3b8" },
+                  }}
+                >
+                  การเปลี่ยนกลยุทธ์จะมีผลในรอบสแกนถัดไปของบอท ตำแหน่งถือครองที่เปิดค้างไว้จะยังคงใช้เกณฑ์ TP/SL ตามปกติ
+                </Alert>
+              </Stack>
+            )}
+
+            {/* TAB PANEL 2: Coin Scanner Setup */}
+            {tabIndex === 2 && (
               <Stack spacing={1.5}>
                 <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
                   <Box>
@@ -616,8 +831,8 @@ export function SettingsView({
               </Stack>
             )}
 
-            {/* TAB PANEL 2: Strategy Parameters */}
-            {tabIndex === 2 && (
+            {/* TAB PANEL 3: Strategy Parameters */}
+            {tabIndex === 3 && (
               <Stack spacing={1.5}>
                 <Box>
                   <Typography
