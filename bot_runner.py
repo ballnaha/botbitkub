@@ -30,6 +30,7 @@ DEFAULT_CONFIG = {
     "stop_loss_pct": -5.0,
     "take_profit_pct": 10.0,
     "max_open_trades": 3,
+    "max_budget_thb": 5000.0,
     "trade_direction": "long",
     "leverage": 1,
     "symbols": [
@@ -117,6 +118,13 @@ class BotRunner:
                 cursor.execute("DROP TABLE positions_old")
                 conn.commit()
             
+            # Add order_id to positions table if it doesn't exist
+            cursor.execute("PRAGMA table_info(positions)")
+            cols = [col[1] for col in cursor.fetchall()]
+            if "order_id" not in cols:
+                cursor.execute("ALTER TABLE positions ADD COLUMN order_id TEXT")
+                conn.commit()
+            
             # Create trade_history table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS trade_history (
@@ -137,6 +145,16 @@ class BotRunner:
                 )
             """)
             conn.commit()
+
+            # Add buy_order_id and sell_order_id to trade_history table if they don't exist
+            cursor.execute("PRAGMA table_info(trade_history)")
+            cols = [col[1] for col in cursor.fetchall()]
+            if "buy_order_id" not in cols:
+                cursor.execute("ALTER TABLE trade_history ADD COLUMN buy_order_id TEXT")
+                conn.commit()
+            if "sell_order_id" not in cols:
+                cursor.execute("ALTER TABLE trade_history ADD COLUMN sell_order_id TEXT")
+                conn.commit()
             
             # Legacy JSON migration
             # 1. Migrate positions
@@ -226,7 +244,8 @@ class BotRunner:
                     "pnl_thb": row["pnl_thb"],
                     "trade_direction": row["trade_direction"],
                     "leverage": row["leverage"],
-                    "margin_mode": row["margin_mode"]
+                    "margin_mode": row["margin_mode"],
+                    "order_id": row["order_id"] if "order_id" in row.keys() else ""
                 }
             conn.close()
         except Exception as e:
@@ -241,8 +260,8 @@ class BotRunner:
             cursor.execute("""
                 INSERT OR REPLACE INTO positions (
                     symbol, mode, buy_price, buy_time, amount, current_price,
-                    pnl_percent, pnl_thb, trade_direction, leverage, margin_mode
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    pnl_percent, pnl_thb, trade_direction, leverage, margin_mode, order_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 symbol,
                 pos.get("mode", mode),
@@ -254,7 +273,8 @@ class BotRunner:
                 pos["pnl_thb"],
                 pos.get("trade_direction", "long"),
                 pos.get("leverage", 1),
-                pos.get("margin_mode", "spot")
+                pos.get("margin_mode", "spot"),
+                pos.get("order_id", "")
             ))
             conn.commit()
             conn.close()
@@ -282,8 +302,8 @@ class BotRunner:
                 cursor.execute("""
                     INSERT OR REPLACE INTO positions (
                         symbol, mode, buy_price, buy_time, amount, current_price,
-                        pnl_percent, pnl_thb, trade_direction, leverage, margin_mode
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        pnl_percent, pnl_thb, trade_direction, leverage, margin_mode, order_id
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     symbol,
                     pos.get("mode", mode),
@@ -295,7 +315,8 @@ class BotRunner:
                     pos["pnl_thb"],
                     pos.get("trade_direction", "long"),
                     pos.get("leverage", 1),
-                    pos.get("margin_mode", "spot")
+                    pos.get("margin_mode", "spot"),
+                    pos.get("order_id", "")
                 ))
             conn.commit()
             conn.close()
@@ -310,8 +331,8 @@ class BotRunner:
                 INSERT INTO trade_history (
                     symbol, buy_time, sell_time, buy_price, sell_price,
                     amount, pnl_percent, pnl_thb, reason, mode,
-                    trade_direction, leverage, margin_mode
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    trade_direction, leverage, margin_mode, buy_order_id, sell_order_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 h["symbol"],
                 h["buy_time"],
@@ -325,7 +346,9 @@ class BotRunner:
                 h.get("mode", "Dry-Run"),
                 h.get("trade_direction", "long"),
                 h.get("leverage", 1),
-                h.get("margin_mode", "spot")
+                h.get("margin_mode", "spot"),
+                h.get("buy_order_id", ""),
+                h.get("sell_order_id", "")
             ))
             conn.commit()
             conn.close()
@@ -380,7 +403,14 @@ class BotRunner:
     def add_log(self, message):
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         log_entry = f"[{timestamp}] {message}"
-        print(log_entry)
+        try:
+            print(log_entry)
+        except UnicodeEncodeError:
+            try:
+                # Safe print fallback replacing non-encodable characters
+                print(log_entry.encode('ascii', errors='replace').decode('ascii'))
+            except Exception:
+                pass
         self.logs.append(log_entry)
         # จำกัดจำนวน log สูงสุด 200 รายการ
         if len(self.logs) > 200:
@@ -496,9 +526,21 @@ class BotRunner:
             self.add_log(f"Max open trades reached ({max_open_trades}). Skip buy for {symbol}.")
             return
 
+        max_budget = float(self.config.get("max_budget_thb", 5000.0))
+        stake = float(self.config.get("stake_amount_thb", 100.0))
+        
+        # Calculate current budget in use by active positions
+        current_used_budget = 0.0
+        for pos in self.positions.values():
+            current_used_budget += float(pos.get("amount", 0.0)) * float(pos.get("buy_price", 0.0))
+            
+        # Check if adding this trade would exceed the budget
+        if current_used_budget + stake > max_budget:
+            self.add_log(f"Allocated budget limit reached (Used: {current_used_budget:,.2f} THB + Stake: {stake:,.2f} THB > Max: {max_budget:,.2f} THB). Skip buy for {symbol}.")
+            return
+
         if strategy.check_buy_signal(df):
             last_price = float(df.iloc[-1]["close"])
-            stake = self.config["stake_amount_thb"]
             
             self.add_log(f"🟢 [BUY SIGNAL] {symbol} at {last_price:,.2f} THB")
             
@@ -527,8 +569,14 @@ class BotRunner:
                     order = self.place_real_market_order("buy", symbol, stake)
                     if order:
                         # บันทึกสถานะส่งคำสั่งซื้อจริงสำเร็จ
-                        filled_price = float(order.get("rat", last_price)) or last_price
+                        filled_price = float(order.get("rat", 0.0))
+                        if filled_price <= 0.0:
+                            filled_price = last_price
+                            
                         filled_amt = float(order.get("rec", 0.0))
+                        if filled_amt <= 0.0:
+                            # Estimate based on stake and filled_price (minus Bitkub's fee of 0.25%)
+                            filled_amt = (stake * 0.9975) / filled_price
                         
                         self.positions[symbol] = {
                             "symbol": symbol,
@@ -701,7 +749,7 @@ class BotRunner:
             raise ValueError("API Keys are not configured. Cannot place real trade.")
             
         parts = symbol.upper().split('/')
-        bitkub_symbol = f"THB_{parts[0]}" if len(parts) == 2 else symbol
+        bitkub_symbol = f"{parts[0]}_{parts[1]}" if len(parts) == 2 else symbol
         
         path = "/api/v3/market/place-bid" if side == "buy" else "/api/v3/market/place-ask"
         

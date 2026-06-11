@@ -3,6 +3,8 @@ export interface BalanceItem {
   free: number;
   used: number;
   total: number;
+  locked_by_bot?: number;
+  free_for_manual?: number;
 }
 
 export interface TickerData {
@@ -41,6 +43,8 @@ export interface HistoryItem {
   pnl_thb: number | null;
   pnl_percent: number | null;
   reason: string;
+  mode?: string;
+  source?: string;
 }
 
 export type BotConfig = {
@@ -50,6 +54,7 @@ export type BotConfig = {
   stop_loss_pct: number;
   take_profit_pct: number;
   max_open_trades: number;
+  max_budget_thb: number;
   trade_direction: string;
   leverage: number;
   symbols: string[];

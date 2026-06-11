@@ -58,6 +58,7 @@ import { BotTradeView } from "./components/BotTradeView";
 import { LogsView } from "./components/LogsView";
 import { ManualTradeView } from "./components/ManualTradeView";
 import { SettingsView } from "./components/SettingsView";
+import { Footer } from "./components/Footer";
 import { useToast } from "./components/Toast";
 import { useBitkubWebSocket } from "./hooks/useBitkubWebSocket";
 
@@ -106,6 +107,7 @@ interface HistoryItem {
   pnl_thb: number | null;
   pnl_percent: number | null;
   reason: string;
+  mode?: string;
 }
 
 interface NumberStepperProps {
@@ -184,6 +186,7 @@ export default function DashboardPage() {
     stop_loss_pct: -5,
     take_profit_pct: 10,
     max_open_trades: 3,
+    max_budget_thb: 5000,
     trade_direction: "long",
     leverage: 1,
     symbols: [] as string[],
@@ -231,6 +234,7 @@ export default function DashboardPage() {
   const [devLogs, setDevLogs] = useState<string[]>([]);
   const [botLogs, setBotLogs] = useState<string[]>([]);
   const [activeView, setActiveView] = useState<DashboardView>("bot");
+  const [dataLoading, setDataLoading] = useState(false);
 
   const tradeSymbolOptions = useMemo(() => {
     const symbols = Array.from(new Set(Object.keys(tickers)));
@@ -364,6 +368,7 @@ export default function DashboardPage() {
           stop_loss_pct: data.stop_loss_pct ?? -5,
           take_profit_pct: data.take_profit_pct ?? 10,
           max_open_trades: data.max_open_trades ?? 3,
+          max_budget_thb: data.max_budget_thb ?? 5000.0,
           trade_direction: data.trade_direction || "long",
           leverage: data.leverage ?? 1,
         };
@@ -444,7 +449,8 @@ export default function DashboardPage() {
         total: Number(item.total || (item.amount * (item.price || item.sell_price)) || 0),
         pnl_thb: item.pnl_thb !== undefined ? Number(item.pnl_thb) : null,
         pnl_percent: item.pnl_percent !== undefined ? Number(item.pnl_percent) : null,
-        reason: item.reason || ""
+        reason: item.reason || "",
+        mode: item.mode
       }));
       setHistory(parsed.reverse());
     } catch (err) {
@@ -554,6 +560,7 @@ export default function DashboardPage() {
   };
 
   const handleSaveBotSettings = async () => {
+    setDataLoading(true);
     try {
       const res = await fetch("/api/bot/config", {
         method: "POST",
@@ -564,6 +571,7 @@ export default function DashboardPage() {
           stop_loss_pct: Number(botConfig.stop_loss_pct),
           take_profit_pct: Number(botConfig.take_profit_pct),
           max_open_trades: Number(botConfig.max_open_trades),
+          max_budget_thb: Number(botConfig.max_budget_thb),
           symbols: botConfig.symbols,
         }),
       });
@@ -580,18 +588,29 @@ export default function DashboardPage() {
             stop_loss_pct: data.config.stop_loss_pct ?? prev.stop_loss_pct,
             take_profit_pct: data.config.take_profit_pct ?? prev.take_profit_pct,
             max_open_trades: data.config.max_open_trades ?? prev.max_open_trades,
+            max_budget_thb: data.config.max_budget_thb ?? prev.max_budget_thb,
             trade_direction: data.config.trade_direction || prev.trade_direction,
             leverage: data.config.leverage ?? prev.leverage,
             symbols: data.config.symbols || prev.symbols,
             timeframe: data.config.timeframe || prev.timeframe,
           }));
         }
+        
+        // Immediately refresh positions and history for the newly updated mode
+        await Promise.allSettled([
+          fetchBalances(),
+          fetchBotPositions(),
+          fetchBotHistory()
+        ]);
+        
         addDevLog("บันทึกการตั้งค่าบอทสำเร็จ", "success");
         addToast({ type: "success", title: "บันทึกการตั้งค่าสำเร็จ", message: "อัปเดตพารามิเตอร์บอทเรียบร้อยแล้ว" });
       }
     } catch (err) {
       addDevLog("บันทึกการตั้งค่าบอทขัดข้อง", "error");
       addToast({ type: "error", title: "บันทึกล้มเหลว", message: "ไม่สามารถบันทึกการตั้งค่าบอทได้" });
+    } finally {
+      setDataLoading(false);
     }
   };
 
@@ -663,18 +682,6 @@ export default function DashboardPage() {
   // ----------------------------------------------------
   const handleOpenConfirmManual = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!tradeSymbol) {
-      addDevLog("กรุณาเลือกคู่เหรียญก่อนส่งคำสั่ง", "error");
-      return;
-    }
-    if (!tradeAmount || Number(tradeAmount) <= 0) {
-      addDevLog("กรุณาระบุจำนวนสำหรับส่งคำสั่ง", "error");
-      return;
-    }
-    if (tradeType === "limit" && (!tradePrice || Number(tradePrice) <= 0)) {
-      addDevLog("กรุณาระบุราคาสำหรับ Limit Order", "error");
-      return;
-    }
     setConfirmManualOpen(true);
   };
 
@@ -1068,7 +1075,21 @@ export default function DashboardPage() {
         >
           {/* Card 1: Available Cash */}
           <Box>
-            <Card>
+            <Card
+              sx={{
+                background: "rgba(8, 12, 20, 0.72)",
+                backdropFilter: "blur(24px)",
+                border: "1px solid rgba(255, 255, 255, 0.04)",
+                borderRadius: "16px",
+                boxShadow: "0 4px 20px 0 rgba(0, 0, 0, 0.15)",
+                transition: "all 0.3s ease",
+                "&:hover": {
+                  transform: "translateY(-2px)",
+                  borderColor: "rgba(0, 193, 106, 0.25)",
+                  boxShadow: "0 6px 25px 0 rgba(0, 193, 106, 0.08)"
+                }
+              }}
+            >
               <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: { xs: 1.25, sm: 1.6 }, "&:last-child": { pb: { xs: 1.25, sm: 1.6 } } }}>
                 <Box>
                   <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -1087,7 +1108,27 @@ export default function DashboardPage() {
 
           {/* Card 2: API Connection */}
           <Box>
-            <Card>
+            <Card
+              sx={{
+                background: "rgba(8, 12, 20, 0.72)",
+                backdropFilter: "blur(24px)",
+                border: connectionStatus === "connected"
+                  ? "1px solid rgba(0, 193, 106, 0.12)"
+                  : "1px solid rgba(239, 91, 99, 0.12)",
+                borderRadius: "16px",
+                boxShadow: "0 4px 20px 0 rgba(0, 0, 0, 0.15)",
+                transition: "all 0.3s ease",
+                "&:hover": {
+                  transform: "translateY(-2px)",
+                  borderColor: connectionStatus === "connected"
+                    ? "rgba(0, 193, 106, 0.35)"
+                    : "rgba(239, 91, 99, 0.35)",
+                  boxShadow: connectionStatus === "connected"
+                    ? "0 6px 25px 0 rgba(0, 193, 106, 0.08)"
+                    : "0 6px 25px 0 rgba(239, 91, 99, 0.08)"
+                }
+              }}
+            >
               <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: { xs: 1.25, sm: 1.6 }, "&:last-child": { pb: { xs: 1.25, sm: 1.6 } } }}>
                 <Box>
                   <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.8, display: "block" }}>
@@ -1122,7 +1163,27 @@ export default function DashboardPage() {
 
           {/* Card 3: Auto Bot Run State */}
           <Box>
-            <Card>
+            <Card sx={{ 
+              background: "rgba(8, 12, 20, 0.72)",
+              backdropFilter: "blur(24px)",
+              borderRadius: "16px",
+              boxShadow: botConfig.is_running 
+                ? "0 4px 20px rgba(0, 193, 106, 0.05)"
+                : "0 4px 20px rgba(0, 0, 0, 0.15)",
+              border: botConfig.is_running 
+                ? "1px solid rgba(0, 193, 106, 0.25)" 
+                : "1px solid rgba(255, 255, 255, 0.04)",
+              transition: "all 0.3s ease",
+              "&:hover": {
+                transform: "translateY(-2px)",
+                borderColor: botConfig.is_running 
+                  ? "rgba(0, 193, 106, 0.4)" 
+                  : "rgba(255, 255, 255, 0.08)",
+                boxShadow: botConfig.is_running 
+                  ? "0 6px 25px rgba(0, 193, 106, 0.12)" 
+                  : "0 6px 25px rgba(0, 0, 0, 0.25)"
+              }
+            }}>
               <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: { xs: 1.25, sm: 1.6 }, "&:last-child": { pb: { xs: 1.25, sm: 1.6 } } }}>
                 <Box>
                   <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.8, display: "block" }}>
@@ -1132,19 +1193,40 @@ export default function DashboardPage() {
                     <Chip 
                       size="small"
                       label={botConfig.dry_run ? "RUNNING (DRY)" : "RUNNING (LIVE)"} 
-                      color="success" 
-                      sx={{ fontSize: "11px", height: "22px", fontWeight: 600 }} 
+                      sx={{ 
+                        fontSize: "11px", 
+                        height: "22px", 
+                        fontWeight: 600,
+                        backgroundColor: "rgba(0, 193, 106, 0.12)",
+                        color: "#00c16a",
+                        border: "1px solid rgba(0, 193, 106, 0.2)"
+                      }} 
                     />
                   ) : (
                     <Chip 
                       size="small"
                       label={botConfig.dry_run ? "STOPPED (DRY)" : "STOPPED (LIVE)"} 
-                      color="error" 
-                      sx={{ fontSize: "11px", height: "22px", fontWeight: 600 }} 
+                      sx={{ 
+                        fontSize: "11px", 
+                        height: "22px", 
+                        fontWeight: 600,
+                        backgroundColor: "rgba(255, 255, 255, 0.03)",
+                        color: "text.secondary",
+                        border: "1px solid rgba(255, 255, 255, 0.05)"
+                      }} 
                     />
                   )}
                 </Box>
-                <Box sx={{ p: 1.5, borderRadius: "12px", backgroundColor: "rgba(59, 130, 246, 0.08)", color: "secondary.main", display: "flex" }}>
+                <Box 
+                  sx={{ 
+                    p: 1.5, 
+                    borderRadius: "12px", 
+                    backgroundColor: botConfig.is_running ? "rgba(0, 193, 106, 0.08)" : "rgba(255, 255, 255, 0.03)", 
+                    color: botConfig.is_running ? "#00c16a" : "text.secondary", 
+                    display: "flex",
+                    transition: "all 0.3s ease" 
+                  }}
+                >
                   <Bot size={20} />
                 </Box>
               </CardContent>
@@ -1153,7 +1235,21 @@ export default function DashboardPage() {
 
           {/* Card 4: Positions Held */}
           <Box>
-            <Card>
+            <Card
+              sx={{
+                background: "rgba(8, 12, 20, 0.72)",
+                backdropFilter: "blur(24px)",
+                border: "1px solid rgba(255, 255, 255, 0.04)",
+                borderRadius: "16px",
+                boxShadow: "0 4px 20px 0 rgba(0, 0, 0, 0.15)",
+                transition: "all 0.3s ease",
+                "&:hover": {
+                  transform: "translateY(-2px)",
+                  borderColor: "rgba(129, 140, 248, 0.25)",
+                  boxShadow: "0 6px 25px 0 rgba(129, 140, 248, 0.08)"
+                }
+              }}
+            >
               <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: { xs: 1.25, sm: 1.6 }, "&:last-child": { pb: { xs: 1.25, sm: 1.6 } } }}>
                 <Box>
                   <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em" }}>
@@ -1187,7 +1283,19 @@ export default function DashboardPage() {
           })}
         </Paper>
 
-        {activeView === "bot" && <BotTradeView botConfig={botConfig} positions={positions} history={history} handleBotToggle={handleBotToggle} handleSaveBotSettings={handleSaveBotSettings} handleOpenConfirmPanic={handleOpenConfirmPanic} updateBotConfigDraft={updateBotConfigDraft} setActiveView={setActiveView} />}
+        {activeView === "bot" && (
+          <BotTradeView
+            botConfig={botConfig}
+            positions={positions}
+            history={history}
+            handleBotToggle={handleBotToggle}
+            handleSaveBotSettings={handleSaveBotSettings}
+            handleOpenConfirmPanic={handleOpenConfirmPanic}
+            updateBotConfigDraft={updateBotConfigDraft}
+            setActiveView={setActiveView}
+            dataLoading={dataLoading}
+          />
+        )}
 
         {activeView === "manual" && (
           <ManualTradeView
@@ -1232,6 +1340,13 @@ export default function DashboardPage() {
           />
         )}
 
+        {/* Footer */}
+        <Footer
+          wsConnected={wsConnected}
+          backendConnected={connectionStatus === "connected"}
+          activeView={activeView}
+          setActiveView={setActiveView}
+        />
 
       </Box>
 

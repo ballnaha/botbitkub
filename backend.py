@@ -245,6 +245,24 @@ async def get_balance():
                 detail=f"Bitkub balance error (Code {code}): {res_json.get('message')}"
             )
 
+        # Calculate bot-locked live positions directly from database
+        bot_locked = {}
+        try:
+            import sqlite3
+            conn = sqlite3.connect(bot.db_path if bot else "bot_data.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT symbol, amount FROM positions WHERE mode = 'LIVE'")
+            for row in cursor.fetchall():
+                symbol = row[0]
+                amount = float(row[1])
+                parts = symbol.split("/")
+                if len(parts) == 2:
+                    asset = parts[0]
+                    bot_locked[asset] = bot_locked.get(asset, 0.0) + amount
+            conn.close()
+        except Exception as e:
+            print(f"Error reading live bot positions for balance lock: {e}")
+
         data_list = res_json.get("data", [])
         parsed_balances = []
         
@@ -253,19 +271,30 @@ async def get_balance():
             free = float(item.get("available", 0.0))
             used = float(item.get("reserved", 0.0))
             total = float(item.get("total", 0.0))
+            
+            # If this coin is locked by the bot in LIVE mode
+            locked_by_bot = bot_locked.get(currency, 0.0)
+            
+            # Available free cash/coin for manual trading
+            free_for_manual = max(0.0, free - locked_by_bot) if currency != "THB" else free
+            
             # Show assets that have balance, or show THB always
             if total > 0.0 or currency == 'THB':
                 parsed_balances.append({
                     "asset": currency,
                     "free": free,
                     "used": used,
-                    "total": total
+                    "total": total,
+                    "locked_by_bot": locked_by_bot,
+                    "free_for_manual": free_for_manual
                 })
         
         return {
             "status": "success",
             "balances": parsed_balances
         }
+    except HTTPException as he:
+        raise he
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
@@ -318,11 +347,11 @@ async def place_trade(trade: TradeRequest):
         if order_type not in ['limit', 'market']:
             raise HTTPException(status_code=400, detail="Type must be 'limit' or 'market'")
 
-        # Map symbol from 'BTC/THB' to 'THB_BTC'
+        # Map symbol from 'BTC/THB' to 'BTC_THB'
         standard_symbol = trade.symbol.upper()
         parts = standard_symbol.split('/')
         if len(parts) == 2:
-            bitkub_symbol = f"THB_{parts[0]}"
+            bitkub_symbol = f"{parts[0]}_{parts[1]}"
         else:
             bitkub_symbol = standard_symbol
 
@@ -355,12 +384,183 @@ async def place_trade(trade: TradeRequest):
             "status": "success",
             "order": res_json.get("result", {})
         }
+    except HTTPException as he:
+        raise he
     except ValueError as ve:
         raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Order failed: {str(e)}")
 
+# Pydantic model for Cancel Order Request
+class CancelOrderRequest(BaseModel):
+    symbol: str
+    order_id: str
+    side: str
+
+@app.get("/api/open-orders")
+async def get_open_orders(symbol: str = None):
+    try:
+        if symbol:
+            symbols_to_fetch = [symbol]
+        else:
+            symbols_to_fetch = bot.config.get("symbols", []) if bot else ["BTC/THB", "ETH/THB", "KUB/THB"]
+            
+        # Fetch bot order IDs to tag
+        bot_order_ids = set()
+        try:
+            import sqlite3
+            conn = sqlite3.connect(bot.db_path if bot else "bot_data.db")
+            cursor = conn.cursor()
+            cursor.execute("SELECT order_id FROM positions WHERE order_id IS NOT NULL AND order_id != ''")
+            for row in cursor.fetchall():
+                bot_order_ids.add(str(row[0]))
+            conn.close()
+        except Exception as e:
+            print(f"Error reading bot order IDs: {e}")
+
+        all_open_orders = []
+        
+        async def fetch_for_symbol(s):
+            parts = s.split("/")
+            if len(parts) == 2:
+                bitkub_symbol = f"{parts[0]}_{parts[1]}"
+            else:
+                bitkub_symbol = s
+                
+            path = f"/api/v3/market/my-open-orders?sym={bitkub_symbol.lower()}"
+            headers = get_auth_headers("GET", path)
+            response = await asyncio.to_thread(bitkub_http.get, BITKUB_HOST + path, headers=headers, timeout=5)
+            res_json = response.json()
+            
+            if res_json.get("error") == 0:
+                orders = res_json.get("result", [])
+                for o in orders:
+                    o["symbol"] = s
+                    # Tag order source
+                    oid = str(o.get("id", o.get("order_id", "")))
+                    o["source"] = "bot" if oid in bot_order_ids else "manual"
+                return orders
+            return []
+
+        tasks = [fetch_for_symbol(s) for s in symbols_to_fetch]
+        results = await asyncio.gather(*tasks)
+        
+        for r in results:
+            all_open_orders.extend(r)
+            
+        # Sort orders by timestamp descending
+        all_open_orders.sort(key=lambda x: x.get("ts", 0), reverse=True)
+        
+        return {
+            "status": "success",
+            "open_orders": all_open_orders
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch open orders: {str(e)}")
+
+@app.post("/api/cancel-order")
+async def post_cancel_order(req: CancelOrderRequest):
+    try:
+        parts = req.symbol.split("/")
+        if len(parts) == 2:
+            bitkub_symbol = f"{parts[0]}_{parts[1]}"
+        else:
+            bitkub_symbol = req.symbol
+            
+        path = "/api/v3/market/cancel-order"
+        body = {
+            "sym": bitkub_symbol.lower(),
+            "id": req.order_id,
+            "sd": req.side.lower()
+        }
+        headers = get_auth_headers("POST", path, body)
+        response = await asyncio.to_thread(bitkub_http.post, BITKUB_HOST + path, json=body, headers=headers, timeout=5)
+        res_json = response.json()
+        
+        error_code = res_json.get("error", 0)
+        if error_code != 0:
+            raise HTTPException(status_code=400, detail=f"Cancel failed (Code {error_code}): {res_json.get('message')}")
+            
+        return {
+            "status": "success",
+            "result": res_json.get("result")
+        }
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cancel order: {str(e)}")
+
+@app.get("/api/order-history")
+async def get_order_history(symbol: str = None):
+    try:
+        if symbol:
+            symbols_to_fetch = [symbol]
+        else:
+            symbols_to_fetch = bot.config.get("symbols", []) if bot else ["BTC/THB", "ETH/THB", "KUB/THB"]
+            
+        # Fetch bot-placed order IDs from database to cross-reference
+        bot_order_ids = set()
+        try:
+            import sqlite3
+            conn = sqlite3.connect(bot.db_path if bot else "bot_data.db")
+            cursor = conn.cursor()
+            
+            # Fetch from active positions (pending sells)
+            cursor.execute("SELECT order_id FROM positions WHERE order_id IS NOT NULL AND order_id != ''")
+            for row in cursor.fetchall():
+                bot_order_ids.add(str(row[0]))
+                
+            # Fetch from history (buys and sells)
+            cursor.execute("SELECT buy_order_id, sell_order_id FROM trade_history")
+            for row in cursor.fetchall():
+                if row[0]: bot_order_ids.add(str(row[0]))
+                if row[1]: bot_order_ids.add(str(row[1]))
+            conn.close()
+        except Exception as e:
+            print(f"Error reading bot order IDs: {e}")
+
+        all_order_history = []
+        
+        async def fetch_for_symbol(s):
+            parts = s.split("/")
+            if len(parts) == 2:
+                bitkub_symbol = f"{parts[0]}_{parts[1]}"
+            else:
+                bitkub_symbol = s
+                
+            path = f"/api/v3/market/my-order-history?sym={bitkub_symbol.lower()}&limit=20"
+            headers = get_auth_headers("GET", path)
+            response = await asyncio.to_thread(bitkub_http.get, BITKUB_HOST + path, headers=headers, timeout=5)
+            res_json = response.json()
+            
+            if res_json.get("error") == 0:
+                orders = res_json.get("result", [])
+                for o in orders:
+                    o["symbol"] = s
+                    # Tag order source
+                    oid = str(o.get("id", o.get("order_id", "")))
+                    o["source"] = "bot" if oid in bot_order_ids else "manual"
+                return orders
+            return []
+
+        tasks = [fetch_for_symbol(s) for s in symbols_to_fetch]
+        results = await asyncio.gather(*tasks)
+        
+        for r in results:
+            all_order_history.extend(r)
+            
+        # Sort history by timestamp descending
+        all_order_history.sort(key=lambda x: x.get("ts", 0), reverse=True)
+        
+        return {
+            "status": "success",
+            "history": all_order_history
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to fetch order history: {str(e)}")
+
 # Bot Runtime Lifecycle
+
 @app.on_event("startup")
 def startup_event():
     global bot
@@ -379,6 +579,7 @@ class BotToggleRequest(BaseModel):
     stop_loss_pct: float = None
     take_profit_pct: float = None
     max_open_trades: int = None
+    max_budget_thb: float = None
     symbols: list[str] = None
 
 class PanicSellRequest(BaseModel):
@@ -395,6 +596,7 @@ async def get_bot_status():
         "stop_loss_pct": bot.config.get("stop_loss_pct", -5.0),
         "take_profit_pct": bot.config.get("take_profit_pct", 10.0),
         "max_open_trades": bot.config.get("max_open_trades", 3),
+        "max_budget_thb": bot.config.get("max_budget_thb", 5000.0),
         "trade_direction": bot.config.get("trade_direction", "long"),
         "leverage": bot.config.get("leverage", 1),
         "symbols": bot.config.get("symbols", []),
@@ -421,6 +623,8 @@ async def save_bot_config(config_req: BotToggleRequest):
         bot.config["take_profit_pct"] = config_req.take_profit_pct
     if config_req.max_open_trades is not None:
         bot.config["max_open_trades"] = max(1, config_req.max_open_trades)
+    if config_req.max_budget_thb is not None:
+        bot.config["max_budget_thb"] = max(0.0, config_req.max_budget_thb)
     if config_req.symbols is not None:
         bot.config["symbols"] = [sym.strip().upper() for sym in config_req.symbols if sym]
     bot.config["trade_direction"] = "long"

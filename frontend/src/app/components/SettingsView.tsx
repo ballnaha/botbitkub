@@ -213,12 +213,12 @@ export function SettingsView({
           background: "rgba(8, 12, 20, 0.72)",
           backdropFilter: "blur(24px)",
           border: botConfig.dry_run 
-            ? "1px solid rgba(0, 193, 106, 0.08)"
-            : "1px solid rgba(239, 91, 99, 0.15)",
+            ? "1px solid rgba(148, 163, 184, 0.15)"
+            : "1px solid rgba(0, 193, 106, 0.15)",
           borderRadius: "20px",
           boxShadow: botConfig.dry_run
-            ? "0 9px 32px 0 rgba(0, 193, 106, 0.04)"
-            : "0 9px 32px 0 rgba(239, 91, 99, 0.05)",
+            ? "0 9px 32px 0 rgba(0, 0, 0, 0.2)"
+            : "0 9px 32px 0 rgba(0, 193, 106, 0.05)",
           transition: "all 0.3s ease",
         }}
       >
@@ -229,8 +229,8 @@ export function SettingsView({
               <Box
                 sx={{
                   p: 1.2,
-                  backgroundColor: botConfig.dry_run ? "rgba(0, 193, 106, 0.08)" : "rgba(239, 91, 99, 0.08)",
-                  color: botConfig.dry_run ? "primary.main" : "#ff7a82",
+                  backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.08)" : "rgba(0, 193, 106, 0.08)",
+                  color: botConfig.dry_run ? "#94a3b8" : "primary.main",
                   borderRadius: "12px",
                   display: "flex",
                   transition: "all 0.3s ease",
@@ -259,7 +259,7 @@ export function SettingsView({
                 p: 0.5,
                 border: "1px solid rgba(255, 255, 255, 0.04)",
                 "& .MuiTabs-indicator": {
-                  backgroundColor: botConfig.dry_run ? "primary.main" : "#ef5b63",
+                  backgroundColor: botConfig.dry_run ? "#94a3b8" : "primary.main",
                   borderRadius: "11px",
                   height: "100%",
                   opacity: 0.08,
@@ -274,7 +274,7 @@ export function SettingsView({
                   transition: "all 0.25s ease",
                   gap: 1,
                   "&.Mui-selected": {
-                    color: botConfig.dry_run ? "primary.main" : "#ff7a82",
+                    color: botConfig.dry_run ? "#94a3b8" : "primary.main",
                     backgroundColor: "rgba(255, 255, 255, 0.02)",
                   },
                   "&:hover": {
@@ -327,22 +327,22 @@ export function SettingsView({
                       p: 2.5,
                       borderRadius: "16px",
                       cursor: "pointer",
-                      backgroundColor: botConfig.dry_run ? "rgba(0, 193, 106, 0.03)" : "rgba(13, 20, 35, 0.3)",
-                      border: botConfig.dry_run ? "1.5px solid rgba(0, 193, 106, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
-                      boxShadow: botConfig.dry_run ? "0 0 15px rgba(0, 193, 106, 0.05)" : "none",
+                      backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.04)" : "rgba(13, 20, 35, 0.3)",
+                      border: botConfig.dry_run ? "1.5px solid rgba(148, 163, 184, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
+                      boxShadow: botConfig.dry_run ? "0 0 15px rgba(148, 163, 184, 0.05)" : "none",
                       transition: "all 0.2s ease",
                       "&:hover": {
-                        borderColor: botConfig.dry_run ? "rgba(0, 193, 106, 0.6)" : "rgba(255, 255, 255, 0.08)",
-                        backgroundColor: botConfig.dry_run ? "rgba(0, 193, 106, 0.05)" : "rgba(255, 255, 255, 0.01)",
+                        borderColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.6)" : "rgba(255, 255, 255, 0.08)",
+                        backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.06)" : "rgba(255, 255, 255, 0.01)",
                       }
                     }}
                   >
                     <Stack spacing={1.5}>
                       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: botConfig.dry_run ? "primary.main" : "text.secondary" }}>
+                        <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: botConfig.dry_run ? "#94a3b8" : "text.secondary" }}>
                           🧪 Dry-Run Mode
                         </Typography>
-                        {botConfig.dry_run && <Chip label="ACTIVE" color="primary" size="small" sx={{ height: 16, fontSize: "9px", fontWeight: 500 }} />}
+                        {botConfig.dry_run && <Chip label="ACTIVE" size="small" sx={{ height: 16, fontSize: "9px", fontWeight: 600, backgroundColor: "rgba(148, 163, 184, 0.15)", color: "#94a3b8", border: "1px solid rgba(148, 163, 184, 0.3)" }} />}
                       </Box>
                       <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", lineHeight: 1.5 }}>
                         โหมดจำลองการซื้อขายโดยใช้ยอดเงินและราคาจริงเพื่อทดสอบอัลกอริทึม ปลอดภัย 100% ไม่ส่งคำสั่งซื้อไปยัง Bitkub
@@ -357,22 +357,22 @@ export function SettingsView({
                       p: 2.5,
                       borderRadius: "16px",
                       cursor: "pointer",
-                      backgroundColor: !botConfig.dry_run ? "rgba(239, 91, 99, 0.03)" : "rgba(13, 20, 35, 0.3)",
-                      border: !botConfig.dry_run ? "1.5px solid rgba(239, 91, 99, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
-                      boxShadow: !botConfig.dry_run ? "0 0 15px rgba(239, 91, 99, 0.05)" : "none",
+                      backgroundColor: !botConfig.dry_run ? "rgba(0, 193, 106, 0.03)" : "rgba(13, 20, 35, 0.3)",
+                      border: !botConfig.dry_run ? "1.5px solid rgba(0, 193, 106, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
+                      boxShadow: !botConfig.dry_run ? "0 0 15px rgba(0, 193, 106, 0.05)" : "none",
                       transition: "all 0.2s ease",
                       "&:hover": {
-                        borderColor: !botConfig.dry_run ? "rgba(239, 91, 99, 0.6)" : "rgba(255, 255, 255, 0.08)",
-                        backgroundColor: !botConfig.dry_run ? "rgba(239, 91, 99, 0.05)" : "rgba(255, 255, 255, 0.01)",
+                        borderColor: !botConfig.dry_run ? "rgba(0, 193, 106, 0.6)" : "rgba(255, 255, 255, 0.08)",
+                        backgroundColor: !botConfig.dry_run ? "rgba(0, 193, 106, 0.05)" : "rgba(255, 255, 255, 0.01)",
                       }
                     }}
                   >
                     <Stack spacing={1.5}>
                       <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: !botConfig.dry_run ? "#ff7a82" : "text.secondary" }}>
+                        <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: !botConfig.dry_run ? "primary.main" : "text.secondary" }}>
                           ⚡ LIVE Trade Mode
                         </Typography>
-                        {!botConfig.dry_run && <Chip label="ACTIVE" color="error" size="small" sx={{ height: 16, fontSize: "9px", fontWeight: 500 }} />}
+                        {!botConfig.dry_run && <Chip label="ACTIVE" color="primary" size="small" sx={{ height: 16, fontSize: "9px", fontWeight: 500 }} />}
                       </Box>
                       <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", lineHeight: 1.5 }}>
                         โหมดสั่งซื้อขายด้วยเงินจริงผ่าน API ของท่าน ออร์เดอร์ส่งลงกระดาน Bitkub ทันทีที่มีสัญญาณการซื้อขาย
@@ -388,6 +388,21 @@ export function SettingsView({
                     icon={<ShieldCheck size={18} />}
                     sx={{
                       borderRadius: "14px",
+                      backgroundColor: "rgba(255, 255, 255, 0.015)",
+                      border: "1px solid rgba(255, 255, 255, 0.05)",
+                      color: "text.secondary",
+                      fontSize: "0.82rem",
+                      "& .MuiAlert-icon": { color: "#94a3b8" },
+                    }}
+                  >
+                    <strong>การป้องกันความปลอดภัย:</strong> ระบบแยกพอร์ตการซื้อขายและประวัติประมูลจำลองออกจากเงินจริงเด็ดขาดเพื่อไม่ให้เกิดความสับสน
+                  </Alert>
+                ) : (
+                  <Alert
+                    severity="success"
+                    icon={<ShieldCheck size={18} />}
+                    sx={{
+                      borderRadius: "14px",
                       backgroundColor: "rgba(0, 193, 106, 0.02)",
                       border: "1px solid rgba(0, 193, 106, 0.1)",
                       color: "primary.light",
@@ -395,22 +410,7 @@ export function SettingsView({
                       "& .MuiAlert-icon": { color: "primary.main" },
                     }}
                   >
-                    <strong>การป้องกันความปลอดภัย:</strong> ระบบแยกพอร์ตการซื้อขายและประวัติประมูลจำลองออกจากเงินจริงเด็ดขาดเพื่อไม่ให้เกิดความสับสน
-                  </Alert>
-                ) : (
-                  <Alert
-                    severity="warning"
-                    icon={<AlertTriangle size={18} />}
-                    sx={{
-                      borderRadius: "14px",
-                      backgroundColor: "rgba(239, 91, 99, 0.02)",
-                      border: "1px solid rgba(239, 91, 99, 0.12)",
-                      color: "#fecdd3",
-                      fontSize: "0.82rem",
-                      "& .MuiAlert-icon": { color: "#ef5b63" },
-                    }}
-                  >
-                    <strong>ระมัดระวังเป็นพิเศษ:</strong> ตรวจสอบสลอต API Key และสิทธิ์ในการส่งคำสั่งซื้อขายจริงในบัญชีก่อนกดบันทึก
+                    <strong>การใช้งานเงินจริง:</strong> ระบบกำลังพร้อมเชื่อมตรงบัญชี Bitkub ของท่าน ออร์เดอร์จะถูกซื้อขายด้วยเงินจริงทันทีตามเงื่อนไขที่กำหนด
                   </Alert>
                 )}
               </Stack>
@@ -641,9 +641,25 @@ export function SettingsView({
                   sx={{
                     display: "grid",
                     gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-                    gap: 1
+                    gap: 1.5
                   }}
                 >
+                  <Stack spacing={1} sx={{ gridColumn: { sm: "span 2" } }}>
+                    <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      งบลงทุนของบอทสูงสุด (Max Budget THB)
+                    </Typography>
+                    <NumberStepper
+                      value={botConfig.max_budget_thb ?? 5000}
+                      step={500}
+                      min={100}
+                      suffix="THB"
+                      onChange={(value) => updateBotConfigDraft({ max_budget_thb: value })}
+                    />
+                    <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
+                      จำกัดงบประมาณรวมสูงสุดที่บอทใช้ซื้อเหรียญถือครองพร้อมกันทั้งหมด เพื่อความปลอดภัยป้องกันไม่ให้บอทเทรดจนเกินงบที่ต้องการ
+                    </Typography>
+                  </Stack>
+
                   <Stack spacing={1}>
                     <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
                       เงินทุนต่อไม้ (Stake Amount)
@@ -772,21 +788,21 @@ export function SettingsView({
                   fontSize: "0.88rem",
                   fontWeight: 600,
                   background: botConfig.dry_run 
-                    ? "linear-gradient(90deg, #00c16a 0%, #00a85d 100%)"
-                    : "linear-gradient(90deg, #ef5b63 0%, #dc4854 100%)",
-                  color: "#17201a",
+                    ? "linear-gradient(90deg, #475569 0%, #334155 100%)"
+                    : "linear-gradient(90deg, #00c16a 0%, #00a85d 100%)",
+                  color: botConfig.dry_run ? "#ffffff" : "#17201a",
                   borderRadius: "14px",
                   boxShadow: botConfig.dry_run 
-                    ? "0 4px 15px rgba(0, 193, 106, 0.15)"
-                    : "0 4px 15px rgba(239, 91, 99, 0.15)",
+                    ? "0 4px 15px rgba(0, 0, 0, 0.2)"
+                    : "0 4px 15px rgba(0, 193, 106, 0.15)",
                   transition: "all 0.2s ease",
                   "&:hover": {
                     background: botConfig.dry_run 
-                      ? "linear-gradient(90deg, #1fe385 0%, #00a85d 100%)"
-                      : "linear-gradient(90deg, #ff7a82 0%, #dc4854 100%)",
+                      ? "linear-gradient(90deg, #64748b 0%, #334155 100%)"
+                      : "linear-gradient(90deg, #1fe385 0%, #00a85d 100%)",
                     boxShadow: botConfig.dry_run
-                      ? "0 6px 20px rgba(0, 193, 106, 0.25)"
-                      : "0 6px 20px rgba(239, 91, 99, 0.25)",
+                      ? "0 6px 20px rgba(0, 0, 0, 0.3)"
+                      : "0 6px 20px rgba(0, 193, 106, 0.25)",
                   },
                   "&.Mui-disabled": {
                     background: "rgba(255,255,255,0.06)",
@@ -808,14 +824,14 @@ export function SettingsView({
         sx={{
           "& .MuiDialog-paper": {
             background: "#0d1321",
-            border: "1px solid rgba(239, 91, 99, 0.2)",
+            border: "1px solid rgba(0, 193, 106, 0.2)",
             borderRadius: "16px",
             p: 1,
           }
         }}
       >
-        <DialogTitle sx={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: "1.1rem", color: "#ff7a82", display: "flex", alignItems: "center", gap: 1 }}>
-          <AlertTriangle size={22} /> ยืนยันการเปลี่ยนไปใช้ "เงินจริง" (LIVE)
+        <DialogTitle sx={{ fontFamily: "Outfit, sans-serif", fontWeight: 600, fontSize: "1.1rem", color: "primary.main", display: "flex", alignItems: "center", gap: 1 }}>
+          <ShieldCheck size={22} style={{ color: "#00c16a" }} /> ยืนยันการเปลี่ยนไปใช้ "เงินจริง" (LIVE)
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ color: "text.secondary", fontSize: "0.92rem", mt: 1, lineHeight: 1.6 }}>
@@ -844,13 +860,13 @@ export function SettingsView({
           <Button
             onClick={confirmLiveSwitch}
             variant="contained"
-            color="error"
             sx={{
               fontWeight: 600,
               fontSize: "0.85rem",
               borderRadius: "11px",
-              backgroundColor: "#ef5b63",
-              "&:hover": { backgroundColor: "#dc4854" }
+              backgroundColor: "#00c16a",
+              color: "#17201a",
+              "&:hover": { backgroundColor: "#00a85d" }
             }}
           >
             ฉันแน่ใจ, เปิดโหมดเงินจริง

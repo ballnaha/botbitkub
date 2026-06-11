@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Box, Button, Card, CardContent, Chip, IconButton, InputAdornment, MenuItem, Paper, Select, Stack, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from "@mui/material";
+import { useState, useMemo } from "react";
+import { Box, Button, Card, CardContent, Chip, CircularProgress, IconButton, InputAdornment, MenuItem, Paper, Select, Stack, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from "@mui/material";
 import { Bot, History, Inbox, Minus, Plus, TrendingUp } from "lucide-react";
 import type { BotConfig, HistoryItem, PositionItem } from "./dashboardTypes";
 
@@ -334,9 +334,10 @@ interface BotTradeViewProps {
   handleOpenConfirmPanic: (symbol: string) => void;
   updateBotConfigDraft: (patch: Partial<BotConfig>) => void;
   setActiveView?: (view: any) => void;
+  dataLoading?: boolean;
 }
 
-export function BotTradeView({ botConfig, positions, history, handleBotToggle, handleSaveBotSettings, handleOpenConfirmPanic, updateBotConfigDraft, setActiveView }: BotTradeViewProps) {
+export function BotTradeView({ botConfig, positions, history, handleBotToggle, handleSaveBotSettings, handleOpenConfirmPanic, updateBotConfigDraft, setActiveView, dataLoading = false }: BotTradeViewProps) {
   const [tradeHistoryRange, setTradeHistoryRange] = useState<TradeHistoryRange>("30d");
 
   // Strategy Risk Level Logic
@@ -362,7 +363,12 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
     riskDescription = "กลยุทธ์แบบสมดุล มุ่งเน้นการเติบโตอย่างมั่นคงในสภาวะตลาดปกติ";
   }
 
-  const filteredHistory = filterHistoryByRange(history, tradeHistoryRange);
+  const modeFilteredHistory = useMemo(() => {
+    const targetMode = botConfig.dry_run ? "Dry-Run" : "LIVE";
+    return history.filter((h) => h.mode === targetMode);
+  }, [history, botConfig.dry_run]);
+
+  const filteredHistory = filterHistoryByRange(modeFilteredHistory, tradeHistoryRange);
   const selectedTradeHistoryRange = tradeHistoryRangeOptions.find((option) => option.value === tradeHistoryRange);
 
   return (
@@ -370,18 +376,19 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
       {/* Auto Bot Settings Form */}
       <Card
         sx={{
-          border: botConfig.dry_run
-            ? "1px solid rgba(0, 193, 106, 0.08)"
-            : "1px solid rgba(239, 91, 99, 0.15)",
-          boxShadow: botConfig.dry_run
-            ? "0 4px 20px rgba(0, 193, 106, 0.03)"
-            : "0 4px 20px rgba(239, 91, 99, 0.05)"
+          border: botConfig.is_running
+            ? "1px solid rgba(0, 193, 106, 0.25)"
+            : "1px solid rgba(255, 255, 255, 0.04)",
+          boxShadow: botConfig.is_running
+            ? "0 4px 20px rgba(0, 193, 106, 0.06)"
+            : "0 4px 20px rgba(0, 0, 0, 0.3)",
+          transition: "all 0.3s ease"
         }}
       >
         <CardContent sx={{ p: 2.5 }}>
           <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
             <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1 }}>
-              <Bot size={18} style={{ color: botConfig.dry_run ? "#00c16a" : "#ef5b63" }} />
+              <Bot size={18} style={{ color: botConfig.is_running ? "#00c16a" : "#94a3b8", transition: "color 0.3s ease" }} />
               <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
                 บอทเทรดอัตโนมัติ
               </Typography>
@@ -391,9 +398,9 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
                 sx={{
                   fontSize: "9.5px",
                   fontWeight: 500,
-                  backgroundColor: botConfig.dry_run ? "rgba(0, 193, 106, 0.12)" : "rgba(239, 91, 99, 0.12)",
-                  color: botConfig.dry_run ? "primary.main" : "#ff7a82",
-                  border: botConfig.dry_run ? "1px solid rgba(0, 193, 106, 0.2)" : "1px solid rgba(239, 91, 99, 0.2)",
+                  backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.1)" : "rgba(0, 193, 106, 0.12)",
+                  color: botConfig.dry_run ? "#94a3b8" : "primary.main",
+                  border: botConfig.dry_run ? "1px solid rgba(148, 163, 184, 0.2)" : "1px solid rgba(0, 193, 106, 0.2)",
                   height: "19px"
                 }}
               />
@@ -413,7 +420,7 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
             <Switch
               checked={botConfig.is_running}
               onChange={handleBotToggle}
-              color={botConfig.dry_run ? "primary" : "error"}
+              color="primary"
             />
           </Box>
 
@@ -423,13 +430,22 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
               sx={{
                 display: "grid",
                 gridTemplateColumns: "repeat(2, 1fr)",
-                gap: 1,
+                gap: 1.5,
                 p: 2,
                 borderRadius: "14px",
                 backgroundColor: "rgba(2, 6, 23, 0.45)",
                 border: "1px solid rgba(255, 255, 255, 0.04)"
               }}
             >
+              <Box sx={{ gridColumn: "span 2" }}>
+                <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.5 }}>
+                  งบลงทุนสูงสุดของบอท (Max Budget)
+                </Typography>
+                <Typography sx={{ fontSize: "0.95rem", fontWeight: 600, color: "text.primary", fontFamily: "monospace" }}>
+                  {botConfig.max_budget_thb ?? 5000} THB
+                </Typography>
+              </Box>
+
               <Box>
                 <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.5 }}>
                   จำนวนไม้สูงสุด
@@ -540,7 +556,14 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
             <TrendingUp size={18} style={{ color: "#3b82f6" }} />
           </Box>
 
-          {positions.length === 0 ? (
+          {dataLoading ? (
+            <Box sx={{ py: 6, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+              <CircularProgress size={28} thickness={4} />
+              <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>
+                กำลังโหลดตำแหน่งถือครองของบอท...
+              </Typography>
+            </Box>
+          ) : positions.length === 0 ? (
             <Box sx={{ py: 6, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
               <Inbox size={36} style={{ color: "rgba(255,255,255,0.15)" }} />
               <Typography sx={{ color: "text.secondary", fontSize: "0.85rem" }}>
@@ -582,7 +605,7 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
                           <Chip size="small" label={`${(pos.trade_direction || "long").toUpperCase()}`} variant="outlined" sx={{ fontSize: "9px", height: "19px", borderColor: "rgba(16,185,129,0.3)", color: "primary.main", fontWeight: 500 }} />
                         </TableCell>
                         <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem", color: "text.primary", fontWeight: 600 }}>
-                          {pos.amount.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                          {pos.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}
                         </TableCell>
                         <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem", color: "text.secondary" }}>
                           {pos.buy_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
@@ -748,7 +771,14 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
 
           <PnLChart history={filteredHistory} />
 
-          {filteredHistory.length === 0 ? (
+          {dataLoading ? (
+            <Box sx={{ py: 6, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+              <CircularProgress size={28} thickness={4} />
+              <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>
+                กำลังโหลดประวัติการทำรายการ...
+              </Typography>
+            </Box>
+          ) : filteredHistory.length === 0 ? (
             <Box sx={{ py: 6, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
               <Inbox size={36} style={{ color: "rgba(255,255,255,0.15)" }} />
               <Typography sx={{ color: "text.secondary", fontSize: "0.85rem" }}>
@@ -805,7 +835,7 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
                           )}
                         </TableCell>
                         <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
-                          {item.amount.toLocaleString(undefined, { maximumFractionDigits: 6 })}
+                          {item.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}
                         </TableCell>
                         <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem", color: "text.secondary" }}>
                           {item.buy_price !== undefined ? item.buy_price.toLocaleString(undefined, { minimumFractionDigits: 2 }) : "-"}

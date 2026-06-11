@@ -1,5 +1,5 @@
 {
-    "is_running": false,
+    "is_running": true,
     "dry_run": false,
     "stake_amount_thb": 20.0,
     "stop_loss_pct": -5.0,
@@ -29,5 +29,6 @@
         "BOME/THB",
         "EL/THB"
     ],
-    "timeframe": "15"
+    "timeframe": "15",
+    "max_budget_thb": 5000.0
 }
