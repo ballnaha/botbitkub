@@ -118,8 +118,8 @@ async def auth_middleware(request: Request, call_next):
         
     path = request.url.path
     
-    # 1. Allow public routes
-    if path in ["/api/login"]:
+    # 1. Allow public routes (all non-API files/paths and the login endpoint)
+    if not path.startswith("/api") or path == "/api/login":
         return await call_next(request)
         
     # 2. Check session cookie
@@ -717,6 +717,119 @@ async def bot_panic_sell(req: PanicSellRequest):
         return {"status": "success", "message": f"Successfully sold {symbol}."}
     else:
         raise HTTPException(status_code=500, detail="Panic sell execution failed.")
+
+
+# ----------------------------------------------------
+# Credential Configuration API (Local Settings)
+# ----------------------------------------------------
+class CredentialsUpdateRequest(BaseModel):
+    username: str = None
+    password: str = None
+    api_key: str = None
+    api_secret: str = None
+
+def update_env_file(updates: dict):
+    env_path = ".env"
+    lines = []
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+    
+    env_dict = {}
+    for line in lines:
+        line = line.strip()
+        if line and not line.startswith("#") and "=" in line:
+            parts = line.split("=", 1)
+            if len(parts) == 2:
+                k, v = parts
+                env_dict[k.strip()] = v.strip().strip('"').strip("'")
+                
+    for k, v in updates.items():
+        if v is not None:
+            env_dict[k] = v
+            os.environ[k] = str(v)
+            
+    with open(env_path, "w", encoding="utf-8") as f:
+        for k, v in env_dict.items():
+            f.write(f'{k}="{v}"\n')
+
+@app.get("/api/settings/credentials")
+async def get_credentials():
+    api_key = os.getenv("BITKUB_API_KEY", "")
+    api_secret = os.getenv("BITKUB_API_SECRET", "")
+    
+    # Mask values
+    masked_key = api_key[:6] + "..." + api_key[-4:] if len(api_key) > 10 else "not set" if not api_key else "configured"
+    masked_secret = api_secret[:6] + "..." + api_secret[-4:] if len(api_secret) > 10 else "not set" if not api_secret else "configured"
+    
+    return {
+        "status": "success",
+        "username": os.getenv("DASHBOARD_USERNAME", "admin"),
+        "api_key_masked": masked_key,
+        "api_secret_masked": masked_secret,
+        "has_api_key": bool(api_key and not are_credentials_placeholder(api_key, api_secret))
+    }
+
+@app.post("/api/settings/credentials")
+async def update_credentials(req: CredentialsUpdateRequest):
+    updates = {}
+    if req.username is not None and req.username.strip():
+        updates["DASHBOARD_USERNAME"] = req.username.strip()
+    if req.password is not None and req.password.strip():
+        updates["DASHBOARD_PASSWORD"] = req.password.strip()
+    if req.api_key is not None and req.api_key.strip():
+        updates["BITKUB_API_KEY"] = req.api_key.strip()
+    if req.api_secret is not None and req.api_secret.strip():
+        updates["BITKUB_API_SECRET"] = req.api_secret.strip()
+        
+    if updates:
+        try:
+            update_env_file(updates)
+            return {"status": "success", "message": "Credentials updated successfully"}
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to update credentials: {str(e)}")
+    return {"status": "success", "message": "No updates applied"}
+
+
+# ----------------------------------------------------
+# Static Frontend Serving (Packaged Desktop Mode)
+# ----------------------------------------------------
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+
+FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "out")
+
+if os.path.exists(FRONTEND_DIR):
+    print(f"Frontend static files found at {FRONTEND_DIR}. Serving static files.")
+    
+    # Mount Next.js _next static assets folder directly
+    next_assets_dir = os.path.join(FRONTEND_DIR, "_next")
+    if os.path.exists(next_assets_dir):
+        app.mount("/_next", StaticFiles(directory=next_assets_dir), name="next_assets")
+        
+    @app.get("/{path:path}")
+    async def serve_frontend(path: str):
+        # Allow bypass for api
+        if path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="API route not found")
+            
+        # Try to find the literal file
+        file_path = os.path.join(FRONTEND_DIR, path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+            
+        # Handle paths without extensions (e.g. /login -> login.html)
+        html_path = os.path.join(FRONTEND_DIR, f"{path}.html")
+        if os.path.isfile(html_path):
+            return FileResponse(html_path)
+            
+        # Handle directory index paths
+        dir_index_path = os.path.join(FRONTEND_DIR, path, "index.html")
+        if os.path.isfile(dir_index_path):
+            return FileResponse(dir_index_path)
+            
+        # Fallback to SPA index.html
+        return FileResponse(os.path.join(FRONTEND_DIR, "index.html"))
 
 
 if __name__ == "__main__":

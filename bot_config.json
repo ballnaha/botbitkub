@@ -1,5 +1,5 @@
 {
-    "is_running": true,
+    "is_running": false,
     "dry_run": false,
     "stake_amount_thb": 15.0,
     "stop_loss_pct": -5.0,

@@ -35,6 +35,7 @@ import {
   Minus,
   Info,
   Brain,
+  Key,
 } from "lucide-react";
 import type { BotConfig, StrategyInfo } from "./dashboardTypes";
 
@@ -132,6 +133,78 @@ export function SettingsView({
   const [selectedSymbolToAdd, setSelectedSymbolToAdd] = useState<string | null>(null);
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [strategiesLoading, setStrategiesLoading] = useState(false);
+
+  // Credentials States
+  const [dbUsername, setDbUsername] = useState("");
+  const [dbPassword, setDbPassword] = useState("");
+  const [apiKey, setApiKey] = useState("");
+  const [apiSecret, setApiSecret] = useState("");
+  const [maskedKey, setMaskedKey] = useState("");
+  const [maskedSecret, setMaskedSecret] = useState("");
+  const [credLoading, setCredLoading] = useState(false);
+  const [credSaveLoading, setCredSaveLoading] = useState(false);
+  const [credMsg, setCredMsg] = useState({ type: "", text: "" });
+
+  const fetchCredentials = async () => {
+    setCredLoading(true);
+    try {
+      const res = await fetch("/api/settings/credentials");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === "success") {
+          setDbUsername(data.username || "");
+          setMaskedKey(data.api_key_masked || "");
+          setMaskedSecret(data.api_secret_masked || "");
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch credentials", err);
+    } finally {
+      setCredLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    if (tabIndex === 4) {
+      fetchCredentials();
+    }
+  }, [tabIndex]);
+
+  const handleUpdateCredentials = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setCredSaveLoading(true);
+    setCredMsg({ type: "", text: "" });
+    try {
+      const res = await fetch("/api/settings/credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          username: dbUsername,
+          password: dbPassword || undefined,
+          api_key: apiKey || undefined,
+          api_secret: apiSecret || undefined,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === "success") {
+          setCredMsg({ type: "success", text: "บันทึกข้อมูลและอัปเดต API การเชื่อมต่อเรียบร้อยแล้ว!" });
+          setApiKey("");
+          setApiSecret("");
+          setDbPassword("");
+          fetchCredentials();
+        } else {
+          setCredMsg({ type: "error", text: data.message || "เกิดข้อผิดพลาดในการบันทึกข้อมูล" });
+        }
+      } else {
+        setCredMsg({ type: "error", text: "ไม่สามารถบันทึกข้อมูลไปยังเซิร์ฟเวอร์ได้" });
+      }
+    } catch (err) {
+      setCredMsg({ type: "error", text: "การเชื่อมต่อเซิร์ฟเวอร์ขัดข้อง" });
+    } finally {
+      setCredSaveLoading(false);
+    }
+  };
 
   // Fetch available strategies from backend
   React.useEffect(() => {
@@ -305,6 +378,7 @@ export function SettingsView({
               <Tab icon={<Brain size={14} />} iconPosition="start" label="กลยุทธ์การเทรด" />
               <Tab icon={<Coins size={14} />} iconPosition="start" label="สแกนคู่เหรียญ" />
               <Tab icon={<Activity size={14} />} iconPosition="start" label="พารามิเตอร์เทรด" />
+              <Tab icon={<Key size={14} />} iconPosition="start" label="Bitkub API" />
             </Tabs>
 
             <Divider sx={{ borderColor: "rgba(255,255,255,0.05)" }} />
@@ -969,6 +1043,202 @@ export function SettingsView({
                   </Typography>
                   <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.45 }}>
                     บอทเปิดระบบปฏิบัติการบน Bitkub Spot ตลาดไม่มีกลไกเลเวอเรจขาลงและไม่มีความเสี่ยงด้านการล้างพอร์ต (Liquidation) ทิศทางการซื้อขายเป็น LONG ONLY (ซื้อตอนต่ำเพื่อขายตอนสูง) เท่านั้น การจำกัดไม้และกรอบ TP/SL ถือเป็นหัวใจการประคองมูลค่าพอร์ตหลัก
+                  </Typography>
+                </Paper>
+              </Stack>
+            )}
+
+            {/* TAB PANEL 4: API & Password Credentials */}
+            {tabIndex === 4 && (
+              <Stack spacing={2}>
+                <Box>
+                  <Typography
+                    sx={{
+                      fontSize: "0.88rem",
+                      fontWeight: 600,
+                      color: "text.primary",
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      mb: 0.5,
+                    }}
+                  >
+                    ตั้งค่าการเชื่อมต่อ Bitkub API & บัญชีผู้ใช้
+                  </Typography>
+                  <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
+                    ตั้งค่า API Key และรหัสความปลอดภัยสำหรับการทำงานแบบ LIVE และอัปเดตชื่อผู้ใช้/รหัสผ่านระบบแดชบอร์ด
+                  </Typography>
+                </Box>
+
+                {credMsg.text && (
+                  <Alert 
+                    severity={credMsg.type as any} 
+                    sx={{ 
+                      borderRadius: "12px", 
+                      fontSize: "0.82rem",
+                      border: credMsg.type === "success" ? "1px solid rgba(0, 193, 106, 0.15)" : "1px solid rgba(239, 91, 99, 0.15)",
+                      backgroundColor: credMsg.type === "success" ? "rgba(0, 193, 106, 0.02)" : "rgba(239, 91, 99, 0.02)"
+                    }}
+                  >
+                    {credMsg.text}
+                  </Alert>
+                )}
+
+                {credLoading ? (
+                  <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+                    <CircularProgress size={24} sx={{ color: "primary.main" }} />
+                  </Box>
+                ) : (
+                  <form onSubmit={handleUpdateCredentials}>
+                    <Stack spacing={2.5}>
+                      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
+                        {/* API Key */}
+                        <Stack spacing={1}>
+                          <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            Bitkub API Key
+                          </Typography>
+                          <TextField
+                            placeholder={maskedKey || "กรุณากรอก API Key"}
+                            value={apiKey}
+                            onChange={(e) => setApiKey(e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              "& input": { fontSize: "0.85rem", color: "#ffffff", fontFamily: "monospace" },
+                              "& .MuiOutlinedInput-root": {
+                                borderRadius: "12px",
+                                backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
+                                "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
+                              }
+                            }}
+                          />
+                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
+                            คีย์สาธารณะเพื่อดึงข้อมูลบาลานซ์กระเป๋าและประวัติเทรด
+                          </Typography>
+                        </Stack>
+
+                        {/* API Secret */}
+                        <Stack spacing={1}>
+                          <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            Bitkub API Secret
+                          </Typography>
+                          <TextField
+                            type="password"
+                            placeholder={maskedSecret || "กรุณากรอก API Secret"}
+                            value={apiSecret}
+                            onChange={(e) => setApiSecret(e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              "& input": { fontSize: "0.85rem", color: "#ffffff" },
+                              "& .MuiOutlinedInput-root": {
+                                borderRadius: "12px",
+                                backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
+                                "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
+                              }
+                            }}
+                          />
+                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
+                            รหัสคู่กับ API Key สำหรับยืนยันตัวตนส่งคำสั่งเทรดจริง
+                          </Typography>
+                        </Stack>
+
+                        {/* Dashboard Username */}
+                        <Stack spacing={1}>
+                          <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            ชื่อผู้ใช้แดชบอร์ด (Username)
+                          </Typography>
+                          <TextField
+                            value={dbUsername}
+                            onChange={(e) => setDbUsername(e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              "& input": { fontSize: "0.85rem", color: "#ffffff" },
+                              "& .MuiOutlinedInput-root": {
+                                borderRadius: "12px",
+                                backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
+                                "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
+                              }
+                            }}
+                          />
+                        </Stack>
+
+                        {/* Dashboard Password */}
+                        <Stack spacing={1}>
+                          <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            รหัสผ่านใหม่ (Password)
+                          </Typography>
+                          <TextField
+                            type="password"
+                            placeholder="เว้นว่างไว้เพื่อใช้รหัสผ่านเดิม"
+                            value={dbPassword}
+                            onChange={(e) => setDbPassword(e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              "& input": { fontSize: "0.85rem", color: "#ffffff" },
+                              "& .MuiOutlinedInput-root": {
+                                borderRadius: "12px",
+                                backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
+                                "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
+                              }
+                            }}
+                          />
+                        </Stack>
+                      </Box>
+
+                      <Button
+                        type="submit"
+                        disabled={credSaveLoading}
+                        variant="contained"
+                        sx={{
+                          py: 1.2,
+                          fontWeight: 600,
+                          fontSize: "0.88rem",
+                          borderRadius: "12px",
+                          backgroundColor: botConfig.dry_run ? "rgba(255, 255, 255, 0.08)" : "primary.main",
+                          color: botConfig.dry_run ? "#ffffff" : "#17201a",
+                          "&:hover": { 
+                            backgroundColor: botConfig.dry_run ? "rgba(255, 255, 255, 0.12)" : "primary.light" 
+                          },
+                          "&.Mui-disabled": {
+                            backgroundColor: "rgba(255, 255, 255, 0.05)",
+                            color: "text.disabled"
+                          }
+                        }}
+                      >
+                        {credSaveLoading ? "กำลังบันทึกข้อมูล..." : "บันทึกการเชื่อมต่อ & รหัสผ่าน"}
+                      </Button>
+                    </Stack>
+                  </form>
+                )}
+
+                <Paper
+                  sx={{
+                    p: 2.2,
+                    borderRadius: "14px",
+                    backgroundColor: "rgba(255, 255, 255, 0.015)",
+                    border: "1px solid rgba(255, 255, 255, 0.05)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 0.8
+                  }}
+                >
+                  <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                    <Info size={15} style={{ color: "#fbbf24" }} />
+                    <Typography sx={{ fontSize: "0.78rem", fontWeight: 600, color: "#fbbf24", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                      วิธีสร้าง API Key จาก Bitkub
+                    </Typography>
+                  </Stack>
+                  <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.5 }}>
+                    1. ล็อกอินเข้าสู่เว็บ Bitkub.com &gt; ไปที่หน้า <strong>Settings (ตั้งค่า)</strong> &gt; <strong>API (การจัดการ API)</strong><br />
+                    2. กดสร้าง API Key ใหม่ โดยให้สิทธิ์ (Permissions) เฉพาะ <strong>Read Wallet (อ่าน)</strong> และ <strong>Trade (เทรด Spot)</strong> เท่านั้น<br />
+                    3. <span style={{ color: "#ef5b63", fontWeight: 600 }}>ห้ามสลับสิทธิ์การถอนเงิน (WITHDRAW) เด็ดขาด</span> เพื่อความปลอดภัยสูงสุดของกระเป๋าพอร์ตคุณเอง<br />
+                    4. นำคู่รหัสที่ได้มากรอกลงในช่องด้านบนและกดปุ่มบันทึก เพื่อเริ่มใช้งานบอทเงินจริง
                   </Typography>
                 </Paper>
               </Stack>
