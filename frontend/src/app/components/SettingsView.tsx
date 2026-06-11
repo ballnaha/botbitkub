@@ -4,6 +4,7 @@ import {
   Button,
   Card,
   CardContent,
+  CircularProgress,
   Dialog,
   DialogActions,
   DialogContent,
@@ -40,9 +41,9 @@ import type { BotConfig, StrategyInfo } from "./dashboardTypes";
 interface SettingsViewProps {
   botConfig: BotConfig;
   updateBotConfigDraft: (patch: Partial<BotConfig>) => void;
-  handleSaveBotSettings: () => Promise<void>;
   actionLoading?: boolean;
   allSymbols?: string[];
+  autoSaveState?: "idle" | "saving" | "saved" | "error";
 }
 
 interface NumberStepperProps {
@@ -122,13 +123,12 @@ function NumberStepper({ value, step, min, onChange, suffix }: NumberStepperProp
 export function SettingsView({
   botConfig,
   updateBotConfigDraft,
-  handleSaveBotSettings,
   actionLoading = false,
   allSymbols = [],
+  autoSaveState,
 }: SettingsViewProps) {
   const [tabIndex, setTabIndex] = useState(0);
   const [confirmLiveOpen, setConfirmLiveOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [selectedSymbolToAdd, setSelectedSymbolToAdd] = useState<string | null>(null);
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [strategiesLoading, setStrategiesLoading] = useState(false);
@@ -198,14 +198,7 @@ export function SettingsView({
     setConfirmLiveOpen(false);
   };
 
-  const handleSave = async () => {
-    setSaving(true);
-    try {
-      await handleSaveBotSettings();
-    } finally {
-      setSaving(false);
-    }
-  };
+
 
   // Strategy Risk calculation logic
   const sl = Math.abs(botConfig.stop_loss_pct || 5);
@@ -881,7 +874,7 @@ export function SettingsView({
                     </Typography>
                     <NumberStepper
                       value={botConfig.stake_amount_thb ?? 100}
-                      step={10}
+                      step={1}
                       min={10}
                       suffix="THB"
                       onChange={(value) => updateBotConfigDraft({ stake_amount_thb: value })}
@@ -983,50 +976,42 @@ export function SettingsView({
 
             <Divider sx={{ borderColor: "rgba(255,255,255,0.05)" }} />
 
-            {/* General Settings Tips / Context */}
-            <Box sx={{ display: "flex", gap: 1, p: 2, borderRadius: "14px", backgroundColor: "rgba(255, 255, 255, 0.012)", border: "1px solid rgba(255, 255, 255, 0.03)", alignItems: "flex-start" }}>
-              <Info size={16} style={{ color: "rgba(255,255,255,0.4)", marginTop: 2, flexShrink: 0 }} />
-              <Typography sx={{ fontSize: "0.8rem", color: "text.secondary", lineHeight: 1.5 }}>
-                การปรับแก้ค่าด้านบนจะถูกอัปเดตในโหมดดราฟท์ (Draft State) ทันที ท่านสามารถสลับไปมาระหว่างแถบเพื่อตรวจสอบการตั้งค่าทั้งหมด เมื่อพร้อมแล้วกรุณากด <strong>บันทึกการตั้งค่าระบบ</strong> ด้านล่างเพื่ออัปเดตไฟล์คอนฟิกรันบอทโดยตรง
-              </Typography>
-            </Box>
-
-            {/* Action Buttons */}
-            <Box sx={{ pt: 0.5 }}>
-              <Button
-                fullWidth
-                variant="contained"
-                onClick={handleSave}
-                disabled={actionLoading || saving}
-                sx={{
-                  py: 1.6,
-                  fontSize: "0.88rem",
-                  fontWeight: 600,
-                  background: botConfig.dry_run 
-                    ? "linear-gradient(90deg, #475569 0%, #334155 100%)"
-                    : "linear-gradient(90deg, #00c16a 0%, #00a85d 100%)",
-                  color: botConfig.dry_run ? "#ffffff" : "#17201a",
-                  borderRadius: "14px",
-                  boxShadow: botConfig.dry_run 
-                    ? "0 4px 15px rgba(0, 0, 0, 0.2)"
-                    : "0 4px 15px rgba(0, 193, 106, 0.15)",
-                  transition: "all 0.2s ease",
-                  "&:hover": {
-                    background: botConfig.dry_run 
-                      ? "linear-gradient(90deg, #64748b 0%, #334155 100%)"
-                      : "linear-gradient(90deg, #1fe385 0%, #00a85d 100%)",
-                    boxShadow: botConfig.dry_run
-                      ? "0 6px 20px rgba(0, 0, 0, 0.3)"
-                      : "0 6px 20px rgba(0, 193, 106, 0.25)",
-                  },
-                  "&.Mui-disabled": {
-                    background: "rgba(255,255,255,0.06)",
-                    color: "text.disabled",
-                  }
-                }}
-              >
-                {saving ? "กำลังบันทึกตั้งค่า..." : "บันทึกการตั้งค่าระบบ"}
-              </Button>
+            {/* Auto-save Status Indicator */}
+            <Box
+              sx={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                py: 1.5,
+                gap: 1.2,
+                borderRadius: "12px",
+                backgroundColor: "rgba(255,255,255,0.012)",
+                border: "1px solid rgba(255,255,255,0.03)",
+              }}
+            >
+              {autoSaveState === "saving" && (
+                <>
+                  <CircularProgress size={14} sx={{ color: botConfig.dry_run ? "#94a3b8" : "primary.main" }} />
+                  <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", fontWeight: 500 }}>
+                    กำลังบันทึกการตั้งค่าอัตโนมัติ...
+                  </Typography>
+                </>
+              )}
+              {autoSaveState === "saved" && (
+                <Typography sx={{ fontSize: "0.82rem", color: "#00c16a", fontWeight: 600 }}>
+                  ✓ บันทึกการตั้งค่าระบบเรียบร้อยแล้ว
+                </Typography>
+              )}
+              {autoSaveState === "error" && (
+                <Typography sx={{ fontSize: "0.82rem", color: "#ef5b63", fontWeight: 600 }}>
+                  ✗ เกิดข้อผิดพลาดในการบันทึกข้อมูล
+                </Typography>
+              )}
+              {(!autoSaveState || autoSaveState === "idle") && (
+                <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", fontWeight: 500 }}>
+                  ระบบจะบันทึกการเปลี่ยนแปลงทั้งหมดโดยอัตโนมัติ
+                </Typography>
+              )}
             </Box>
           </Stack>
         </CardContent>

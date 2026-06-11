@@ -8,7 +8,7 @@ interface FooterProps {
   wsConnected?: boolean;
   backendConnected?: boolean;
   activeView?: string;
-  setActiveView?: (view: "bot" | "manual" | "logs" | "settings") => void;
+  setActiveView?: (view: "bot" | "manual" | "settings") => void;
 }
 
 export function Footer({
@@ -18,7 +18,7 @@ export function Footer({
   // Determine consolidated system status
   const isOnline = backendConnected && wsConnected;
   const isLimited = backendConnected && !wsConnected;
-  
+
   let statusColor = "#ef5b63"; // Offline
   let statusText = "Offline";
   if (isOnline) {
@@ -41,7 +41,7 @@ export function Footer({
         background: "rgba(13, 20, 35, 0.25)",
         backdropFilter: "blur(16px)",
         border: "1px solid rgba(255, 255, 255, 0.03)",
-        display: "flex",
+        display: { xs: "none", sm: "flex" },
         flexDirection: { xs: "column", sm: "row" },
         justifyContent: "space-between",
         alignItems: "center",
@@ -50,13 +50,13 @@ export function Footer({
       }}
     >
       {/* Brand & Copyright */}
-      <Box 
-        sx={{ 
-          display: "flex", 
-          alignItems: "center", 
-          gap: 1.5, 
-          flexDirection: { xs: "column", sm: "row" }, 
-          textAlign: { xs: "center", sm: "left" } 
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1.5,
+          flexDirection: { xs: "column", sm: "row" },
+          textAlign: { xs: "center", sm: "left" }
         }}
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -73,13 +73,13 @@ export function Footer({
             Bitkub API Hub
           </Typography>
         </Box>
-        <Box 
-          sx={{ 
-            display: { xs: "none", sm: "block" }, 
-            width: "1px", 
-            height: "12px", 
-            backgroundColor: "rgba(255, 255, 255, 0.08)" 
-          }} 
+        <Box
+          sx={{
+            display: { xs: "none", sm: "block" },
+            width: "1px",
+            height: "12px",
+            backgroundColor: "rgba(255, 255, 255, 0.08)"
+          }}
         />
         <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
           © {new Date().getFullYear()} All rights reserved.
@@ -87,12 +87,12 @@ export function Footer({
       </Box>
 
       {/* System Status Indicators */}
-      <Box 
-        sx={{ 
-          display: "flex", 
-          alignItems: "center", 
-          gap: 1.5, 
-          justifyContent: "center" 
+      <Box
+        sx={{
+          display: "flex",
+          alignItems: "center",
+          gap: 1.5,
+          justifyContent: "center"
         }}
       >
         {/* Status dot */}

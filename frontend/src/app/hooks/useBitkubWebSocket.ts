@@ -4,6 +4,8 @@ import { useEffect, useRef, useCallback, useMemo, useState } from "react";
 
 interface TickerData {
   last: number;
+  bid?: number;
+  ask?: number;
   high: number;
   low: number;
   percentage: number;
@@ -15,6 +17,8 @@ type TickerMap = Record<string, TickerData>;
 interface BitkubTickerInfo {
   isFrozen?: number;
   last?: number;
+  highestBid?: number;
+  lowestAsk?: number;
   high24hr?: number;
   low24hr?: number;
   percentChange?: number;
@@ -145,6 +149,8 @@ export function useBitkubWebSocket(
           const previous = tickersRef.current[symbol];
           tickersRef.current[symbol] = {
             last: data.last ?? previous?.last ?? 0,
+            bid: data.highestBid ?? previous?.bid ?? 0,
+            ask: data.lowestAsk ?? previous?.ask ?? 0,
             high: data.high24hr ?? previous?.high ?? 0,
             low: data.low24hr ?? previous?.low ?? 0,
             percentage: data.percentChange ?? previous?.percentage ?? 0,
@@ -217,6 +223,8 @@ export function useBitkubWebSocket(
 
           initialTickers[stdSymbol] = {
             last: tickerInfo.last ?? 0,
+            bid: tickerInfo.highestBid ?? 0,
+            ask: tickerInfo.lowestAsk ?? 0,
             high: tickerInfo.high24hr ?? 0,
             low: tickerInfo.low24hr ?? 0,
             percentage: tickerInfo.percentChange ?? 0,

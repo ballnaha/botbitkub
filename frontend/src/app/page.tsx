@@ -67,18 +67,21 @@ interface BalanceItem {
   free: number;
   used: number;
   total: number;
+  locked_by_bot?: number;
+  free_for_manual?: number;
 }
 
 interface TickerData {
   last: number;
+  bid?: number;
+  ask?: number;
   high: number;
   low: number;
   percentage: number;
   quoteVolume: number;
 }
 
-const MARKET_ROWS_PER_PAGE = 50;
-type DashboardView = "bot" | "manual" | "logs" | "settings";
+type DashboardView = "bot" | "manual" | "settings";
 
 interface PositionItem {
   symbol: string;
@@ -225,16 +228,41 @@ export default function DashboardPage() {
 
     return activeTickers.filter(([symbol]) => symbol.toUpperCase().includes(query));
   }, [activeTickers, marketSearch]);
-  const marketPageCount = Math.max(1, Math.ceil(filteredMarketTickers.length / MARKET_ROWS_PER_PAGE));
-  const visibleMarketTickers = useMemo(() => {
-    const start = marketPage * MARKET_ROWS_PER_PAGE;
-    return filteredMarketTickers.slice(start, start + MARKET_ROWS_PER_PAGE);
-  }, [filteredMarketTickers, marketPage]);
+
+  const botLockedThb = useMemo(() => {
+    return balances.reduce((sum, item) => {
+      const lockedAmt = item.locked_by_bot ?? 0;
+      if (lockedAmt <= 0) return sum;
+
+      if (item.asset === "THB") return sum + lockedAmt;
+
+      const ticker = tickers[`${item.asset}/THB`];
+      const price = ticker?.bid || ticker?.last || 0;
+      const value = lockedAmt * price;
+
+      const flooredValue = Math.floor(Math.max(0, value) * 100) / 100;
+      return sum + flooredValue;
+    }, 0);
+  }, [balances, tickers]);
+
+  const totalThb = useMemo(() => {
+    return balances.reduce((sum, item) => {
+      if (item.asset === "THB") return sum + item.total;
+
+      const ticker = tickers[`${item.asset}/THB`];
+      const price = ticker?.bid || ticker?.last || 0;
+      const value = item.total * price;
+
+      const flooredValue = Math.floor(Math.max(0, value) * 100) / 100;
+      return sum + flooredValue;
+    }, 0);
+  }, [balances, tickers]);
   const [positions, setPositions] = useState<PositionItem[]>([]);
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [devLogs, setDevLogs] = useState<string[]>([]);
   const [botLogs, setBotLogs] = useState<string[]>([]);
   const [activeView, setActiveView] = useState<DashboardView>("bot");
+  const [monitorOpen, setMonitorOpen] = useState(false);
   const [dataLoading, setDataLoading] = useState(false);
 
   const tradeSymbolOptions = useMemo(() => {
@@ -257,13 +285,22 @@ export default function DashboardPage() {
   const [actionLoading, setActionLoading] = useState(false);
   const [initialLoading, setInitialLoading] = useState(true);
   const [, setBotConfigDirty] = useState(false);
+  const [settingsSaveState, setSettingsSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const botConfigDirtyRef = useRef(false);
+  const latestBotConfigRef = useRef(botConfig);
+  const autoSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const autoSaveVersionRef = useRef(0);
 
   const updateBotConfigDraft = useCallback((patch: Partial<typeof botConfig>) => {
     botConfigDirtyRef.current = true;
     setBotConfigDirty(true);
+    setSettingsSaveState("idle");
     setBotConfig((prev) => ({ ...prev, ...patch }));
   }, []);
+
+  useEffect(() => {
+    latestBotConfigRef.current = botConfig;
+  }, [botConfig]);
 
   // Terminal box scroll refs
   const devLogsRef = useRef<HTMLDivElement>(null);
@@ -277,7 +314,7 @@ export default function DashboardPage() {
     let styleClass = "text-sky-400";
     if (type === "success") styleClass = "text-emerald-400";
     if (type === "error") styleClass = "text-rose-400";
-    
+
     const entry = `<span class="text-slate-500">[${ts}]</span> <span class="${styleClass}">${msg}</span>`;
     setDevLogs((prev) => {
       const updated = [...prev, entry];
@@ -302,10 +339,6 @@ export default function DashboardPage() {
       botLogsRef.current.scrollTop = botLogsRef.current.scrollHeight;
     }
   }, [botLogs]);
-
-  useEffect(() => {
-    setMarketPage((page) => Math.min(page, marketPageCount - 1));
-  }, [marketPageCount]);
 
   // ----------------------------------------------------
   // Core API Fetch Functions (Client-side Polling)
@@ -393,6 +426,12 @@ export default function DashboardPage() {
     }
   };
 
+  const refreshBalancesAfterTrade = () => {
+    fetchBalances();
+    window.setTimeout(fetchBalances, 1200);
+    window.setTimeout(fetchBalances, 3500);
+  };
+
   const fetchTickers = async () => {
     // Fallback: only used for initial load if WebSocket hasn't connected yet
     try {
@@ -466,13 +505,13 @@ export default function DashboardPage() {
       if (handleApiError(res)) return;
       const data = await res.json();
       const rawLogs: string[] = data || [];
-      
+
       const parsed = rawLogs.map((log) => {
         let styleClass = "text-slate-300";
         if (log.includes("[SUCCESS]") || log.includes("สำเร็จ")) styleClass = "text-emerald-400 font-bold";
         else if (log.includes("[ERROR]") || log.includes("ล้มเหลว") || log.toLowerCase().includes("failed")) styleClass = "text-rose-400 font-bold";
         else if (log.includes("[INFO]")) styleClass = "text-sky-300";
-        
+
         return `<div class="log-entry py-0.5 ${styleClass}">${log}</div>`;
       });
       setBotLogs(parsed);
@@ -561,21 +600,24 @@ export default function DashboardPage() {
     }
   };
 
-  const handleSaveBotSettings = async () => {
+  const handleSaveBotSettings = async (configOverride?: typeof botConfig, options?: { silent?: boolean }) => {
+    const configToSave = configOverride || latestBotConfigRef.current;
+    const silent = options?.silent ?? false;
     setDataLoading(true);
+    if (silent) setSettingsSaveState("saving");
     try {
       const res = await fetch("/api/bot/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          dry_run: botConfig.dry_run,
-          stake_amount_thb: Number(botConfig.stake_amount_thb),
-          stop_loss_pct: Number(botConfig.stop_loss_pct),
-          take_profit_pct: Number(botConfig.take_profit_pct),
-          max_open_trades: Number(botConfig.max_open_trades),
-          max_budget_thb: Number(botConfig.max_budget_thb),
-          symbols: botConfig.symbols,
-          strategy: botConfig.strategy,
+          dry_run: configToSave.dry_run,
+          stake_amount_thb: Number(configToSave.stake_amount_thb),
+          stop_loss_pct: Number(configToSave.stop_loss_pct),
+          take_profit_pct: Number(configToSave.take_profit_pct),
+          max_open_trades: Number(configToSave.max_open_trades),
+          max_budget_thb: Number(configToSave.max_budget_thb),
+          symbols: configToSave.symbols,
+          strategy: configToSave.strategy,
         }),
       });
       if (handleApiError(res)) return;
@@ -599,24 +641,72 @@ export default function DashboardPage() {
             strategy: data.config.strategy || prev.strategy,
           }));
         }
-        
+
         // Immediately refresh positions and history for the newly updated mode
         await Promise.allSettled([
           fetchBalances(),
           fetchBotPositions(),
           fetchBotHistory()
         ]);
-        
-        addDevLog("บันทึกการตั้งค่าบอทสำเร็จ", "success");
-        addToast({ type: "success", title: "บันทึกการตั้งค่าสำเร็จ", message: "อัปเดตพารามิเตอร์บอทเรียบร้อยแล้ว" });
+
+        if (silent) {
+          setSettingsSaveState("saved");
+        } else {
+          addDevLog("บันทึกการตั้งค่าบอทสำเร็จ", "success");
+          addToast({ type: "success", title: "บันทึกการตั้งค่าสำเร็จ", message: "อัปเดตพารามิเตอร์บอทเรียบร้อยแล้ว" });
+        }
       }
     } catch (err) {
+      setSettingsSaveState("error");
       addDevLog("บันทึกการตั้งค่าบอทขัดข้อง", "error");
-      addToast({ type: "error", title: "บันทึกล้มเหลว", message: "ไม่สามารถบันทึกการตั้งค่าบอทได้" });
+      if (!silent) {
+        addToast({ type: "error", title: "บันทึกล้มเหลว", message: "ไม่สามารถบันทึกการตั้งค่าบอทได้" });
+      }
     } finally {
       setDataLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!botConfigDirtyRef.current || initialLoading) return;
+
+    if (autoSaveTimerRef.current) {
+      clearTimeout(autoSaveTimerRef.current);
+    }
+
+    const saveVersion = autoSaveVersionRef.current + 1;
+    autoSaveVersionRef.current = saveVersion;
+    setSettingsSaveState("idle");
+
+    autoSaveTimerRef.current = setTimeout(() => {
+      const configSnapshot = latestBotConfigRef.current;
+      handleSaveBotSettings(configSnapshot, { silent: true }).then(() => {
+        if (autoSaveVersionRef.current === saveVersion) {
+          window.setTimeout(() => {
+            if (autoSaveVersionRef.current === saveVersion) {
+              setSettingsSaveState("idle");
+            }
+          }, 1800);
+        }
+      });
+    }, 650);
+
+    return () => {
+      if (autoSaveTimerRef.current) {
+        clearTimeout(autoSaveTimerRef.current);
+      }
+    };
+  }, [
+    botConfig.dry_run,
+    botConfig.stake_amount_thb,
+    botConfig.stop_loss_pct,
+    botConfig.take_profit_pct,
+    botConfig.max_open_trades,
+    botConfig.max_budget_thb,
+    botConfig.strategy,
+    botConfig.symbols,
+    initialLoading,
+  ]);
 
   // ----------------------------------------------------
   // Percentage Stakes Helper Functions
@@ -628,11 +718,11 @@ export default function DashboardPage() {
     }
 
     const baseAsset = tradeSymbol.split("/")[0]; // e.g. BTC
-    
+
     // Find THB Balance
     const thbItem = balances.find((b) => b.asset === "THB");
     const thbFree = thbItem ? thbItem.free : 0;
-    
+
     // Find Crypto Balance
     const cryptoItem = balances.find((b) => b.asset === baseAsset);
     const cryptoFree = cryptoItem ? cryptoItem.free : 0;
@@ -642,7 +732,7 @@ export default function DashboardPage() {
         // Buy Market: Spend percent% of cash THB
         let thbToSpend = thbFree * (percent / 100);
         thbToSpend = Math.floor(thbToSpend * 100) / 100; // 2 decimal
-        
+
         if (thbToSpend > 0) {
           setTradeAmount(thbToSpend.toString());
         } else {
@@ -659,7 +749,7 @@ export default function DashboardPage() {
         let thbToSpend = thbFree * (percent / 100);
         let coinQty = thbToSpend / price;
         coinQty = Math.floor(coinQty * 1000000) / 1000000; // 6 decimals
-        
+
         if (coinQty > 0) {
           setTradeAmount(coinQty.toString());
         } else {
@@ -671,7 +761,7 @@ export default function DashboardPage() {
       // Sell (Limit or Market): Sell percent% of cryptos
       let coinsToSell = cryptoFree * (percent / 100);
       coinsToSell = Math.floor(coinsToSell * 1000000) / 1000000; // 6 decimals
-      
+
       if (coinsToSell > 0) {
         setTradeAmount(coinsToSell.toString());
       } else {
@@ -723,7 +813,7 @@ export default function DashboardPage() {
         // Reset state
         setTradeAmount("");
         setTradePrice("");
-        fetchBalances();
+        refreshBalancesAfterTrade();
       } else {
         addDevLog(`คำสั่งซื้อขายล้มเหลว: ${data.detail || "Unknown error"}`, "error");
         addToast({ type: "error", title: "คำสั่งเทรดล้มเหลว", message: data.detail || "Unknown error" });
@@ -856,7 +946,8 @@ export default function DashboardPage() {
     <Box
       sx={{
         width: "100%",
-        py: { xs: 0, sm: 2 },
+        pt: { xs: 0, sm: 2 },
+        pb: { xs: "88px", sm: 2 },
         px: { xs: 0, sm: 1.5, md: 2 },
         overflowX: "hidden",
         minHeight: "100vh",
@@ -869,26 +960,94 @@ export default function DashboardPage() {
     >
       {/* Background glass blur effect */}
       <Box sx={{ position: "fixed", inset: 0, backdropFilter: "blur(120px)", zIndex: -1, pointerEvents: "none" }} />
-      
+
       {/* Glowing background bubbles */}
-      <Box 
-        sx={{ 
-          position: "fixed", 
-          borderRadius: "50%", 
-          filter: "blur(130px)", 
-          zIndex: -2, 
-          opacity: 0.08, 
-          width: 600, 
-          height: 600, 
-          backgroundColor: "primary.main", 
-          bottom: "-10%", 
-          left: "-10%", 
-          pointerEvents: "none" 
-        }} 
+      <Box
+        sx={{
+          position: "fixed",
+          borderRadius: "50%",
+          filter: "blur(130px)",
+          zIndex: -2,
+          opacity: 0.08,
+          width: 600,
+          height: 600,
+          backgroundColor: "primary.main",
+          bottom: "-10%",
+          left: "-10%",
+          pointerEvents: "none"
+        }}
       />
 
+      {/* Mobile Bottom Navigation Bar (Rendered before content in DOM) */}
+      <Paper
+        elevation={10}
+        sx={{
+          position: "fixed",
+          bottom: 0,
+          left: 0,
+          right: 0,
+          zIndex: 1000,
+          display: { xs: "flex", md: "none" },
+          justifyContent: "space-around",
+          alignItems: "center",
+          p: 1.25,
+          pb: "calc(env(safe-area-inset-bottom) + 10px)",
+          background: "rgba(13, 19, 33, 0.88)",
+          backdropFilter: "blur(24px)",
+          borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+          borderRadius: "20px 20px 0 0",
+          boxShadow: "0 -8px 32px rgba(0, 0, 0, 0.5)",
+        }}
+      >
+        {[
+          { id: "bot", label: "Bot Trade", icon: <Bot size={20} /> },
+          { id: "manual", label: "Manual Trade", icon: <Send size={20} /> },
+          { id: "settings", label: "Settings", icon: <Sliders size={20} /> },
+        ].map((item) => {
+          const isActive = activeView === item.id;
+          return (
+            <Button
+              key={item.id}
+              onClick={() => setActiveView(item.id as DashboardView)}
+              sx={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 0.5,
+                minWidth: 72,
+                py: 0.6,
+                px: 1,
+                borderRadius: "12px",
+                color: isActive ? "primary.main" : "text.secondary",
+                backgroundColor: isActive ? "rgba(0, 193, 106, 0.05)" : "transparent",
+                textTransform: "none",
+                fontSize: "0.72rem",
+                fontWeight: isActive ? 600 : 500,
+                transition: "all 0.2s ease",
+                "&:hover": {
+                  backgroundColor: isActive ? "rgba(0, 193, 106, 0.08)" : "rgba(255, 255, 255, 0.02)",
+                }
+              }}
+            >
+              <Box sx={{
+                color: isActive ? "primary.main" : "text.secondary",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                transition: "transform 0.2s ease",
+                transform: isActive ? "scale(1.1)" : "scale(1)"
+              }}>
+                {item.icon}
+              </Box>
+              <Typography sx={{ fontSize: "9.5px", fontWeight: isActive ? 600 : 500, lineHeight: 1, letterSpacing: "0.02em" }}>
+                {item.label}
+              </Typography>
+            </Button>
+          );
+        })}
+      </Paper>
+
       <Box sx={{ width: "100%", maxWidth: "none", mx: 0, display: "flex", flexDirection: "column", gap: { xs: 1, sm: 1.25 }, px: { xs: 1, sm: 0 } }}>
-        
+
         {/* Header / Navbar — Mobile-optimized sticky header */}
         <Paper
           elevation={0}
@@ -912,11 +1071,11 @@ export default function DashboardPage() {
         >
           {/* Left: Logo + Branding */}
           <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 1, sm: 2 }, minWidth: 0, flex: "0 1 auto" }}>
-            <Box 
-              sx={{ 
-                p: { xs: 0.8, sm: 1.2 }, 
-                backgroundColor: "rgba(0, 193, 106, 0.08)", 
-                color: "primary.main", 
+            <Box
+              sx={{
+                p: { xs: 0.8, sm: 1.2 },
+                backgroundColor: "rgba(0, 193, 106, 0.08)",
+                color: "primary.main",
                 borderRadius: { xs: "11px", sm: "14px" },
                 filter: "drop-shadow(0 0 11px rgba(0, 193, 106, 0.2))",
                 display: "flex",
@@ -926,9 +1085,9 @@ export default function DashboardPage() {
               <Zap size={18} />
             </Box>
             <Box sx={{ minWidth: 0 }}>
-              <Typography 
-                sx={{ 
-                  fontWeight: 600, 
+              <Typography
+                sx={{
+                  fontWeight: 600,
                   fontFamily: "Outfit, sans-serif",
                   background: "linear-gradient(90deg, #fff 0%, #e2e8f0 70%, #00c16a 100%)",
                   WebkitBackgroundClip: "text",
@@ -951,7 +1110,6 @@ export default function DashboardPage() {
             {[
               { id: "bot", label: "Bot Trade", icon: <Bot size={14} /> },
               { id: "manual", label: "Manual Trade", icon: <Send size={14} /> },
-              { id: "logs", label: "Logs", icon: <Terminal size={14} /> },
               { id: "settings", label: "Settings", icon: <Sliders size={14} /> },
             ].map((item) => {
               const isActive = activeView === item.id;
@@ -987,7 +1145,7 @@ export default function DashboardPage() {
           <Box sx={{ display: "flex", alignItems: "center", gap: { xs: 0.75, sm: 1.5 }, flexShrink: 0 }}>
             {/* Connection dot indicator (mobile only) */}
             <Box sx={{ display: { xs: "flex", sm: "none" }, alignItems: "center" }}>
-            <Box sx={{
+              <Box sx={{
                 width: 9, height: 9, borderRadius: "50%",
                 backgroundColor: connectionStatus === "connected" ? "#00c16a" : "#ef5b63",
                 boxShadow: connectionStatus === "connected" ? "0 0 6px rgba(0, 193, 106, 0.5)" : "0 0 6px rgba(239, 91, 99, 0.5)",
@@ -996,35 +1154,76 @@ export default function DashboardPage() {
             </Box>
 
             {/* Desktop-only chips */}
-            <Chip 
-              icon={<User size={13} style={{ color: "#00c16a" }} />} 
+            <Chip
+              icon={<User size={13} style={{ color: "#00c16a" }} />}
               label={username}
               variant="outlined"
-              sx={{ 
-                fontSize: "12px", 
-                fontWeight: 500, 
-                borderColor: "rgba(255, 255, 255, 0.06)", 
+              sx={{
+                fontSize: "12px",
+                fontWeight: 500,
+                borderColor: "rgba(255, 255, 255, 0.06)",
                 backgroundColor: "rgba(255, 255, 255, 0.015)",
                 color: "text.primary",
                 display: { xs: "none", sm: "inline-flex" },
                 height: 28
-              }} 
+              }}
             />
 
-            <Chip 
-              icon={<Cpu size={13} style={{ color: "#3b82f6" }} />} 
-              label="SYS: OK"
-              variant="outlined"
-              sx={{ 
-                fontSize: "12px", 
-                fontWeight: 500, 
-                borderColor: "rgba(255, 255, 255, 0.06)", 
-                backgroundColor: "rgba(255, 255, 255, 0.015)",
-                color: "text.primary",
-                display: { xs: "none", sm: "inline-flex" },
-                height: 28
-              }} 
-            />
+            {connectionStatus === "connected" ? (
+              <Chip
+                icon={<Link size={13} style={{ color: "#00c16a" }} />}
+                label="API: CONNECTED"
+                variant="outlined"
+                sx={{
+                  fontSize: "12px",
+                  fontWeight: 600,
+                  borderColor: "rgba(0, 193, 106, 0.2)",
+                  backgroundColor: "rgba(0, 193, 106, 0.05)",
+                  color: "primary.main",
+                  display: { xs: "none", sm: "inline-flex" },
+                  height: 28
+                }}
+              />
+            ) : (
+              <Tooltip title={connectionMsg || "Bitkub API Connection disconnected"}>
+                <Chip
+                  icon={<Link size={13} style={{ color: "#ef5b63" }} />}
+                  label="API: DISCONNECTED"
+                  variant="outlined"
+                  sx={{
+                    fontSize: "12px",
+                    fontWeight: 600,
+                    borderColor: "rgba(239, 91, 99, 0.2)",
+                    backgroundColor: "rgba(239, 91, 99, 0.05)",
+                    color: "error.main",
+                    display: { xs: "none", sm: "inline-flex" },
+                    height: 28,
+                    cursor: "help"
+                  }}
+                />
+              </Tooltip>
+            )}
+
+            <Tooltip title="System Monitor">
+              <IconButton
+                onClick={() => setMonitorOpen(true)}
+                size="small"
+                sx={{
+                  color: "text.secondary",
+                  border: "1px solid rgba(255,255,255,0.06)",
+                  backgroundColor: "rgba(255,255,255,0.015)",
+                  width: 32,
+                  height: 32,
+                  "&:hover": {
+                    color: "primary.main",
+                    backgroundColor: "rgba(0, 193, 106, 0.05)",
+                    borderColor: "rgba(0, 193, 106, 0.16)",
+                  },
+                }}
+              >
+                <Terminal size={16} />
+              </IconButton>
+            </Tooltip>
 
             {/* Logout: icon-only on mobile, full button on desktop */}
             <IconButton
@@ -1067,16 +1266,57 @@ export default function DashboardPage() {
         </Paper>
 
         {/* KPI Metrics Box Layout */}
-        <Box 
+        <Box
           sx={{
             display: "grid",
             gridTemplateColumns: {
               xs: "repeat(2, 1fr)",
-              md: "repeat(4, 1fr)"
+              md: "repeat(5, 1fr)"
             },
             gap: { xs: 0.75, sm: 1 }
           }}
         >
+          {/* Card 0: Total Assets Valuation */}
+          <Box sx={{ gridColumn: { xs: "span 2", md: "span 1" } }}>
+            <Card
+              sx={{
+                background: "radial-gradient(circle at 50% 35%, rgba(0, 193, 106, 0.07) 0%, transparent 60%), radial-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 0), rgba(8, 12, 20, 0.72)",
+                backgroundSize: "100% 100%, 14px 14px, 100% 100%",
+                backdropFilter: "blur(24px)",
+                border: "1px solid rgba(0, 193, 106, 0.18)",
+                borderRadius: "16px",
+                boxShadow: "0 4px 20px 0 rgba(0, 0, 0, 0.15)",
+                transition: "all 0.3s ease",
+                position: "relative",
+                overflow: "hidden",
+                "&:hover": {
+                  transform: "translateY(-2px)",
+                  borderColor: "primary.main",
+                  boxShadow: "0 8px 30px 0 rgba(0, 193, 106, 0.12)"
+                }
+              }}
+            >
+              <CardContent sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, justifyContent: { xs: "center", sm: "space-between" }, alignItems: "center", gap: { xs: 1.5, sm: 2 }, p: { xs: 2.5, sm: 1.6 }, "&:last-child": { pb: { xs: 2.5, sm: 1.6 } } }}>
+                <Box sx={{ order: { xs: 2, sm: 1 }, display: "flex", flexDirection: "column", alignItems: { xs: "center", sm: "flex-start" } }}>
+                  <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 600, textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                    มูลค่าทั้งหมด
+                  </Typography>
+                  <Box sx={{ display: "flex", alignItems: "baseline", justifyContent: "center", gap: 0.75, mt: 0.5 }}>
+                    <Typography variant="h5" sx={{ fontSize: { xs: "1.42rem", sm: "1.32rem" }, fontWeight: 700, color: "text.primary", fontFamily: "monospace", textShadow: "0 0 12px rgba(255, 255, 255, 0.15)" }}>
+                      {totalThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Typography>
+                    <Typography component="span" sx={{ fontSize: "0.78rem", color: "text.secondary", fontWeight: 500 }}>
+                      THB โดยประมาณ
+                    </Typography>
+                  </Box>
+                </Box>
+                <Box sx={{ order: { xs: 1, sm: 2 }, p: 1.5, borderRadius: "12px", backgroundColor: "rgba(255, 255, 255, 0.03)", color: "text.secondary", display: "flex", filter: { xs: "drop-shadow(0 0 8px rgba(255, 255, 255, 0.05))", sm: "none" } }}>
+                  <Inbox size={20} />
+                </Box>
+              </CardContent>
+            </Card>
+          </Box>
+
           {/* Card 1: Available Cash */}
           <Box>
             <Card
@@ -1099,9 +1339,14 @@ export default function DashboardPage() {
                   <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em" }}>
                     เงินสด THB พร้อมใช้
                   </Typography>
-                  <Typography variant="h5" sx={{ fontSize: { xs: "1.12rem", sm: "1.32rem" }, fontWeight: 600, mt: 0.5, color: "primary.main", fontFamily: "monospace", textShadow: "0 0 11px rgba(0, 193, 106, 0.2)" }}>
-                    {cashThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </Typography>
+                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75, mt: 0.5 }}>
+                    <Typography variant="h5" sx={{ fontSize: { xs: "1.12rem", sm: "1.32rem" }, fontWeight: 600, color: "primary.main", fontFamily: "monospace", textShadow: "0 0 11px rgba(0, 193, 106, 0.2)" }}>
+                      {cashThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Typography>
+                    <Typography component="span" sx={{ fontSize: "0.74rem", color: "text.secondary", fontWeight: 500 }}>
+                      THB
+                    </Typography>
+                  </Box>
                 </Box>
                 <Box sx={{ p: 1.5, borderRadius: "12px", backgroundColor: "rgba(0, 193, 106, 0.08)", color: "primary.main", display: "flex" }}>
                   <Wallet size={20} />
@@ -1110,56 +1355,39 @@ export default function DashboardPage() {
             </Card>
           </Box>
 
-          {/* Card 2: API Connection */}
+          {/* Card 2: Bot Managed Value */}
           <Box>
             <Card
               sx={{
                 background: "rgba(8, 12, 20, 0.72)",
                 backdropFilter: "blur(24px)",
-                border: connectionStatus === "connected"
-                  ? "1px solid rgba(0, 193, 106, 0.12)"
-                  : "1px solid rgba(239, 91, 99, 0.12)",
+                border: "1px solid rgba(255, 255, 255, 0.04)",
                 borderRadius: "16px",
                 boxShadow: "0 4px 20px 0 rgba(0, 0, 0, 0.15)",
                 transition: "all 0.3s ease",
                 "&:hover": {
                   transform: "translateY(-2px)",
-                  borderColor: connectionStatus === "connected"
-                    ? "rgba(0, 193, 106, 0.35)"
-                    : "rgba(239, 91, 99, 0.35)",
-                  boxShadow: connectionStatus === "connected"
-                    ? "0 6px 25px 0 rgba(0, 193, 106, 0.08)"
-                    : "0 6px 25px 0 rgba(239, 91, 99, 0.08)"
+                  borderColor: "rgba(0, 193, 106, 0.25)",
+                  boxShadow: "0 6px 25px 0 rgba(0, 193, 106, 0.08)"
                 }
               }}
             >
               <CardContent sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", p: { xs: 1.25, sm: 1.6 }, "&:last-child": { pb: { xs: 1.25, sm: 1.6 } } }}>
                 <Box>
                   <Typography variant="caption" sx={{ color: "text.secondary", fontWeight: 500, textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.8, display: "block" }}>
-                    Bitkub API Connection
+                    มูลค่าบอทดูแลอยู่
                   </Typography>
-                  {connectionStatus === "connected" ? (
-                    <Chip 
-                      size="small"
-                      label="Connected" 
-                      color="success" 
-                      variant="outlined" 
-                      sx={{ fontSize: "11px", height: "22px", backgroundColor: "rgba(0, 193, 106, 0.08)" }} 
-                    />
-                  ) : (
-                    <Tooltip title={connectionMsg}>
-                      <Chip 
-                        size="small"
-                        label="Disconnected" 
-                        color="error" 
-                        variant="outlined" 
-                        sx={{ fontSize: "11px", height: "22px", backgroundColor: "rgba(239, 91, 99, 0.08)", cursor: "help" }} 
-                      />
-                    </Tooltip>
-                  )}
+                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75, mt: 0.5 }}>
+                    <Typography variant="h5" sx={{ fontSize: { xs: "1.12rem", sm: "1.32rem" }, fontWeight: 600, color: "primary.main", fontFamily: "monospace", textShadow: "0 0 11px rgba(0, 193, 106, 0.2)" }}>
+                      {botLockedThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </Typography>
+                    <Typography component="span" sx={{ fontSize: "0.74rem", color: "text.secondary", fontWeight: 500 }}>
+                      THB โดยประมาณ
+                    </Typography>
+                  </Box>
                 </Box>
-                <Box sx={{ p: 1.5, borderRadius: "12px", backgroundColor: "rgba(255, 255, 255, 0.03)", color: "text.secondary", display: "flex" }}>
-                  <Link size={20} />
+                <Box sx={{ p: 1.5, borderRadius: "12px", backgroundColor: "rgba(0, 193, 106, 0.08)", color: "primary.main", display: "flex" }}>
+                  <TrendingUp size={20} />
                 </Box>
               </CardContent>
             </Card>
@@ -1167,24 +1395,24 @@ export default function DashboardPage() {
 
           {/* Card 3: Auto Bot Run State */}
           <Box>
-            <Card sx={{ 
+            <Card sx={{
               background: "rgba(8, 12, 20, 0.72)",
               backdropFilter: "blur(24px)",
               borderRadius: "16px",
-              boxShadow: botConfig.is_running 
+              boxShadow: botConfig.is_running
                 ? "0 4px 20px rgba(0, 193, 106, 0.05)"
                 : "0 4px 20px rgba(0, 0, 0, 0.15)",
-              border: botConfig.is_running 
-                ? "1px solid rgba(0, 193, 106, 0.25)" 
+              border: botConfig.is_running
+                ? "1px solid rgba(0, 193, 106, 0.25)"
                 : "1px solid rgba(255, 255, 255, 0.04)",
               transition: "all 0.3s ease",
               "&:hover": {
                 transform: "translateY(-2px)",
-                borderColor: botConfig.is_running 
-                  ? "rgba(0, 193, 106, 0.4)" 
+                borderColor: botConfig.is_running
+                  ? "rgba(0, 193, 106, 0.4)"
                   : "rgba(255, 255, 255, 0.08)",
-                boxShadow: botConfig.is_running 
-                  ? "0 6px 25px rgba(0, 193, 106, 0.12)" 
+                boxShadow: botConfig.is_running
+                  ? "0 6px 25px rgba(0, 193, 106, 0.12)"
                   : "0 6px 25px rgba(0, 0, 0, 0.25)"
               }
             }}>
@@ -1194,41 +1422,41 @@ export default function DashboardPage() {
                     สถานะบอทอัตโนมัติ
                   </Typography>
                   {botConfig.is_running ? (
-                    <Chip 
+                    <Chip
                       size="small"
-                      label={botConfig.dry_run ? "RUNNING (DRY)" : "RUNNING (LIVE)"} 
-                      sx={{ 
-                        fontSize: "11px", 
-                        height: "22px", 
+                      label={botConfig.dry_run ? "RUNNING (DRY)" : "RUNNING (LIVE)"}
+                      sx={{
+                        fontSize: "11px",
+                        height: "22px",
                         fontWeight: 600,
                         backgroundColor: "rgba(0, 193, 106, 0.12)",
                         color: "#00c16a",
                         border: "1px solid rgba(0, 193, 106, 0.2)"
-                      }} 
+                      }}
                     />
                   ) : (
-                    <Chip 
+                    <Chip
                       size="small"
-                      label={botConfig.dry_run ? "STOPPED (DRY)" : "STOPPED (LIVE)"} 
-                      sx={{ 
-                        fontSize: "11px", 
-                        height: "22px", 
+                      label={botConfig.dry_run ? "STOPPED (DRY)" : "STOPPED (LIVE)"}
+                      sx={{
+                        fontSize: "11px",
+                        height: "22px",
                         fontWeight: 600,
                         backgroundColor: "rgba(255, 255, 255, 0.03)",
                         color: "text.secondary",
                         border: "1px solid rgba(255, 255, 255, 0.05)"
-                      }} 
+                      }}
                     />
                   )}
                 </Box>
-                <Box 
-                  sx={{ 
-                    p: 1.5, 
-                    borderRadius: "12px", 
-                    backgroundColor: botConfig.is_running ? "rgba(0, 193, 106, 0.08)" : "rgba(255, 255, 255, 0.03)", 
-                    color: botConfig.is_running ? "#00c16a" : "text.secondary", 
+                <Box
+                  sx={{
+                    p: 1.5,
+                    borderRadius: "12px",
+                    backgroundColor: botConfig.is_running ? "rgba(0, 193, 106, 0.08)" : "rgba(255, 255, 255, 0.03)",
+                    color: botConfig.is_running ? "#00c16a" : "text.secondary",
                     display: "flex",
-                    transition: "all 0.3s ease" 
+                    transition: "all 0.3s ease"
                   }}
                 >
                   <Bot size={20} />
@@ -1271,22 +1499,6 @@ export default function DashboardPage() {
           </Box>
         </Box>
 
-        <Paper elevation={0} sx={{ display: { xs: "grid", md: "none" }, p: 0.5, borderRadius: "16px", background: "rgba(13, 19, 33, 0.45)", border: "1px solid rgba(255, 255, 255, 0.04)", gridTemplateColumns: "repeat(4, 1fr)", gap: 0.5 }}>
-          {[
-            { id: "bot", label: "Bot Trade", icon: <Bot size={15} /> },
-            { id: "manual", label: "Manual Trade", icon: <Send size={15} /> },
-            { id: "logs", label: "Logs", icon: <Terminal size={15} /> },
-            { id: "settings", label: "Settings", icon: <Sliders size={15} /> },
-          ].map((item) => {
-            const isActive = activeView === item.id;
-            return (
-              <Button key={item.id} onClick={() => setActiveView(item.id as DashboardView)} startIcon={item.icon} variant={isActive ? "contained" : "text"} sx={{ minHeight: { xs: 38, sm: 42 }, borderRadius: "12px", fontSize: { xs: "0.82rem", sm: "0.82rem" }, fontWeight: 600, color: isActive ? "#17201a" : "text.secondary", backgroundColor: isActive ? "primary.main" : "rgba(255,255,255,0.015)", boxShadow: isActive ? "0 0 19px rgba(16,185,129,0.18)" : "none", px: { xs: 0.75, sm: 1.5 } }}>
-                {item.label}
-              </Button>
-            );
-          })}
-        </Paper>
-
         {activeView === "bot" && (
           <BotTradeView
             botConfig={botConfig}
@@ -1310,7 +1522,6 @@ export default function DashboardPage() {
             filteredMarketTickers={filteredMarketTickers}
             handleOpenConfirmManual={handleOpenConfirmManual}
             marketPage={marketPage}
-            marketPageCount={marketPageCount}
             marketSearch={marketSearch}
             setMarketPage={setMarketPage}
             setMarketSearch={setMarketSearch}
@@ -1327,19 +1538,16 @@ export default function DashboardPage() {
             tradeSymbol={tradeSymbol}
             tradeSymbolOptions={tradeSymbolOptions}
             tradeType={tradeType}
-            visibleMarketTickers={visibleMarketTickers}
             wsConnected={wsConnected}
           />
         )}
-
-        {activeView === "logs" && <LogsView botLogs={botLogs} botLogsRef={botLogsRef} clearDevLogs={clearDevLogs} devLogs={devLogs} devLogsRef={devLogsRef} />}
 
         {activeView === "settings" && (
           <SettingsView
             botConfig={botConfig}
             updateBotConfigDraft={updateBotConfigDraft}
-            handleSaveBotSettings={handleSaveBotSettings}
-            actionLoading={actionLoading}
+            actionLoading={dataLoading}
+            autoSaveState={settingsSaveState}
             allSymbols={tradeSymbolOptions}
           />
         )}
@@ -1354,10 +1562,52 @@ export default function DashboardPage() {
 
       </Box>
 
+      <Dialog
+        open={monitorOpen}
+        onClose={() => setMonitorOpen(false)}
+        fullWidth
+        maxWidth="xl"
+        sx={{
+          "& .MuiDialog-paper": {
+            background: "rgba(8, 12, 20, 0.96)",
+            border: "1px solid rgba(255, 255, 255, 0.06)",
+            borderRadius: "16px",
+            boxShadow: "0 24px 70px rgba(0, 0, 0, 0.55)",
+          },
+        }}
+      >
+        <DialogTitle sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2, color: "text.primary", fontFamily: "Outfit, sans-serif", fontWeight: 700 }}>
+          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+            <Terminal size={18} style={{ color: "#00c16a" }} />
+            System Monitor
+          </Box>
+          <IconButton
+            onClick={() => setMonitorOpen(false)}
+            size="small"
+            sx={{
+              color: "text.secondary",
+              width: 32,
+              height: 32,
+              borderRadius: "50%",
+              transition: "all 0.2s ease",
+              "&:hover": {
+                color: "text.primary",
+                backgroundColor: "rgba(255, 255, 255, 0.08)",
+              },
+            }}
+          >
+            ×
+          </IconButton>
+        </DialogTitle>
+        <DialogContent sx={{ pt: 0, pb: 2 }}>
+          <LogsView botLogs={botLogs} botLogsRef={botLogsRef} clearDevLogs={clearDevLogs} devLogs={devLogs} devLogsRef={devLogsRef} />
+        </DialogContent>
+      </Dialog>
+
       {/* ----------------------------------------------------
           Confirmation Dialog Modals (Material UI)
          ---------------------------------------------------- */}
-      
+
       {/* 1. Manual Trade Confirmation */}
       <Dialog
         open={confirmManualOpen}
@@ -1368,13 +1618,13 @@ export default function DashboardPage() {
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ color: "text.secondary", fontSize: "0.95rem", mt: 1, lineHeight: 1.6 }}>
-            คุณต้องการส่งคำสั่ง <strong>{tradeSide.toUpperCase()} {tradeSymbol}</strong> 
+            คุณต้องการส่งคำสั่ง <strong>{tradeSide.toUpperCase()} {tradeSymbol}</strong>
             ประเภท <strong>{tradeType.toUpperCase()}</strong> จำนวน <strong>{tradeAmount} {tradeSide === "buy" ? "THB" : (tradeSymbol ? tradeSymbol.split("/")[0] : "")}</strong>
             {tradeType === "limit" ? <> ที่ราคา <strong>{tradePrice} THB</strong></> : " ด้วยราคาตลาด"} จริงหรือไม่?
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ gap: 1.5, px: 3, pb: 2.5 }}>
-          <Button 
+          <Button
             onClick={() => setConfirmManualOpen(false)}
             variant="outlined"
             sx={{
@@ -1388,7 +1638,7 @@ export default function DashboardPage() {
           >
             ยกเลิก
           </Button>
-          <Button 
+          <Button
             onClick={handleExecuteManualTrade}
             autoFocus
             variant="contained"
@@ -1426,7 +1676,7 @@ export default function DashboardPage() {
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ gap: 1.5, px: 3, pb: 2.5 }}>
-          <Button 
+          <Button
             onClick={() => setConfirmPanicOpen(false)}
             variant="outlined"
             sx={{
@@ -1440,7 +1690,7 @@ export default function DashboardPage() {
           >
             ยกเลิก
           </Button>
-          <Button 
+          <Button
             onClick={handleExecutePanicSell}
             autoFocus
             variant="contained"

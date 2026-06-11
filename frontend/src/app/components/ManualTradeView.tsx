@@ -1,11 +1,24 @@
 import React, { useEffect, useState, useMemo } from "react";
 import type { Dispatch, FormEvent, SetStateAction } from "react";
-import { Autocomplete, Box, Button, Card, CardContent, Checkbox, Chip, CircularProgress, Divider, FormControlLabel, IconButton, InputAdornment, MenuItem, Paper, Select, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography } from "@mui/material";
-import { ChevronLeft, ChevronRight, Send, TrendingUp, Wallet, FileText, Trash2 } from "lucide-react";
+import { Autocomplete, Box, Button, Card, CardContent, Checkbox, Chip, CircularProgress, Divider, FormControlLabel, IconButton, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Tooltip, Typography } from "@mui/material";
+import { Wallet, FileText } from "lucide-react";
 import type { BalanceItem, TickerData } from "./dashboardTypes";
 import { useToast } from "./Toast";
+import { LiveMarketTabs } from "./LiveMarketTabs";
 
 const MARKET_ROWS_PER_PAGE = 50;
+const DUST_BALANCE_THB = 1;
+
+function floorThb(value: number) {
+  return Math.floor(Math.max(0, value) * 100) / 100;
+}
+
+function getEstimatedThbValue(asset: string, amount: number, tickers: Record<string, TickerData>) {
+  if (asset === "THB") return floorThb(amount);
+  const ticker = tickers[`${asset}/THB`];
+  const valuationPrice = ticker?.bid || ticker?.last || 0;
+  return floorThb(amount * valuationPrice);
+}
 
 interface CustomInputProps {
   label: string;
@@ -124,7 +137,6 @@ interface ManualTradeViewProps {
   filteredMarketTickers: [string, TickerData][];
   handleOpenConfirmManual: (e: FormEvent) => void;
   marketPage: number;
-  marketPageCount: number;
   marketSearch: string;
   setMarketPage: Dispatch<SetStateAction<number>>;
   setMarketSearch: Dispatch<SetStateAction<string>>;
@@ -141,11 +153,10 @@ interface ManualTradeViewProps {
   tradeSymbol: string;
   tradeSymbolOptions: string[];
   tradeType: "market" | "limit";
-  visibleMarketTickers: [string, TickerData][];
   wsConnected: boolean;
 }
 
-export function ManualTradeView({ actionLoading, balances, calculatePercentage, filterTradeSymbolOptions, filteredMarketTickers, handleOpenConfirmManual, marketPage, marketPageCount, marketSearch, setMarketPage, setMarketSearch, setTradeAmount, setTradePrice, setTradeSide, setTradeSymbol, setTradeType, sortedTickers, tickers, tradeAmount, tradePrice, tradeSide, tradeSymbol, tradeSymbolOptions, tradeType, visibleMarketTickers, wsConnected }: ManualTradeViewProps) {
+export function ManualTradeView({ actionLoading, balances, calculatePercentage, filterTradeSymbolOptions, filteredMarketTickers, handleOpenConfirmManual, marketPage, marketSearch, setMarketPage, setMarketSearch, setTradeAmount, setTradePrice, setTradeSide, setTradeSymbol, setTradeType, sortedTickers, tickers, tradeAmount, tradePrice, tradeSide, tradeSymbol, tradeSymbolOptions, tradeType, wsConnected }: ManualTradeViewProps) {
   const { addToast } = useToast();
 
   // Local States for Buy and Sell forms to prevent overlap
@@ -278,6 +289,7 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
   const [buyPrice, setBuyPrice] = useState("");
   const [sellAmount, setSellAmount] = useState("");
   const [sellPrice, setSellPrice] = useState("");
+  const [hideDustBalances, setHideDustBalances] = useState(true);
 
   // Set default trade symbol only once when options load initially
   useEffect(() => {
@@ -324,21 +336,53 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
     return b ? (b.free_for_manual !== undefined ? b.free_for_manual : b.free) : 0;
   }, [balances, baseAsset]);
 
+  const balanceSummary = useMemo(() => {
+    return balances.reduce(
+      (summary, item) => {
+        const totalValue = getEstimatedThbValue(item.asset, item.total, tickers);
+        const availableValue = item.asset === "THB"
+          ? (item.free_for_manual !== undefined ? item.free_for_manual : item.free)
+          : 0;
+        const botLockedValue = getEstimatedThbValue(item.asset, item.locked_by_bot ?? 0, tickers);
+
+        return {
+          totalThb: summary.totalThb + totalValue,
+          availableThb: summary.availableThb + floorThb(availableValue),
+          botLockedThb: summary.botLockedThb + botLockedValue,
+        };
+      },
+      { totalThb: 0, availableThb: 0, botLockedThb: 0 }
+    );
+  }, [balances, tickers]);
+
   const visibleBalances = useMemo(() => {
+    const hasVisibleAmount = (item: BalanceItem) => {
+      const manualFree = item.free_for_manual !== undefined ? item.free_for_manual : item.free;
+      const amount = Math.max(item.total, manualFree, item.free, item.used, item.locked_by_bot ?? 0);
+      if (amount <= 0.00000001) return false;
+
+      const ticker = tickers[`${item.asset}/THB`];
+      if (hideDustBalances && (ticker?.bid || ticker?.last || 0) > 0) {
+        return getEstimatedThbValue(item.asset, amount, tickers) >= DUST_BALANCE_THB;
+      }
+
+      return true;
+    };
+
     return [...balances]
-      .filter((item) => item.asset === "THB" || item.asset === baseAsset || item.total > 0 || item.free > 0 || item.used > 0)
+      .filter((item) => item.asset === "THB" || hasVisibleAmount(item))
       .sort((a, b) => {
-        const priority = (asset: string) => {
-          if (asset === "THB") return 0;
-          if (asset === baseAsset) return 1;
+        const priority = (item: BalanceItem) => {
+          if (item.asset === "THB") return 0;
+          if (item.asset === baseAsset && hasVisibleAmount(item)) return 1;
           return 2;
         };
 
-        const priorityDiff = priority(a.asset) - priority(b.asset);
+        const priorityDiff = priority(a) - priority(b);
         if (priorityDiff !== 0) return priorityDiff;
         return a.asset.localeCompare(b.asset);
       });
-  }, [balances, baseAsset]);
+  }, [balances, baseAsset, hideDustBalances, tickers]);
 
   // Percentage Handlers
   const handleBuyPercent = (pct: number) => {
@@ -458,7 +502,7 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
             >
               <Box sx={{ p: 2, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
                 <Typography sx={{ fontWeight: 600, fontSize: "0.92rem", letterSpacing: "0.05em", color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
-                  📈 กราฟราคาเทคนิคอลเรียลไทม์ (Live Chart): {tradeSymbol || "BTC/THB"}
+                  กราฟราคา Technical Realtime (Live Chart): {tradeSymbol || "BTC/THB"}
                 </Typography>
                 <Chip
                   size="small"
@@ -831,7 +875,21 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                   <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
                     ยอดเงินคงเหลือ (Balances)
                   </Typography>
-                  <Wallet size={18} style={{ color: "#00c16a" }} />
+                  <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={hideDustBalances}
+                          onChange={(e) => setHideDustBalances(e.target.checked)}
+                          sx={{ p: 0.25, color: "text.secondary", "&.Mui-checked": { color: "primary.main" } }}
+                        />
+                      }
+                      label={<Typography sx={{ fontSize: "0.74rem", color: "text.secondary", whiteSpace: "nowrap" }}>ซ่อน &lt; 1 บาท</Typography>}
+                      sx={{ m: 0, gap: 0.4, "& .MuiFormControlLabel-label": { lineHeight: 1 } }}
+                    />
+                    <Wallet size={18} style={{ color: "#00c16a" }} />
+                  </Stack>
                 </Box>
 
                 {balances.length === 0 ? (
@@ -864,6 +922,7 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                       {visibleBalances.map((item) => {
                         const isPrimary = item.asset === "THB" || item.asset === baseAsset;
                         const decimals = item.asset === "THB" ? 2 : 8;
+                        const totalValueThb = getEstimatedThbValue(item.asset, item.total, tickers);
 
                         return (
                           <Box
@@ -903,21 +962,28 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                             </Box>
                             <Box sx={{ minWidth: 0 }}>
                               <Typography sx={{ fontSize: "0.88rem", fontWeight: 600, color: "text.primary", fontFamily: "monospace", overflow: "hidden", textOverflow: "ellipsis" }}>
-                                {(item.free_for_manual !== undefined ? item.free_for_manual : item.free).toLocaleString(undefined, { maximumFractionDigits: decimals })}
+                                {item.total.toLocaleString(undefined, { maximumFractionDigits: decimals })}
                               </Typography>
-                              {item.locked_by_bot !== undefined && item.locked_by_bot > 0 && (
-                                <Typography sx={{ fontSize: "0.7rem", color: "#00c16a", mt: 0.2, fontWeight: 600 }}>
-                                  Bot Lock: {item.locked_by_bot.toLocaleString(undefined, { maximumFractionDigits: 6 })}
-                                </Typography>
-                              )}
-                              {item.used > 0 && (
-                                <Typography sx={{ fontSize: "0.7rem", color: "text.secondary", mt: 0.2 }}>
-                                  Locked {item.used.toLocaleString(undefined, { maximumFractionDigits: 6 })}
-                                </Typography>
+                              {((item.locked_by_bot !== undefined && item.locked_by_bot > 0) || item.used > 0) && (
+                                <Stack spacing={0.2} sx={{ mt: 0.4 }}>
+                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 500, display: "flex", alignItems: "center", gap: 0.5 }}>
+                                    • พร้อมใช้: {(item.free_for_manual !== undefined ? item.free_for_manual : item.free).toLocaleString(undefined, { maximumFractionDigits: decimals })}
+                                  </Typography>
+                                  {item.locked_by_bot !== undefined && item.locked_by_bot > 0 && (
+                                    <Typography sx={{ fontSize: "0.72rem", color: "#00c16a", fontWeight: 600, display: "flex", alignItems: "center", gap: 0.5 }}>
+                                      • บอทล็อก: {item.locked_by_bot.toLocaleString(undefined, { maximumFractionDigits: decimals })}
+                                    </Typography>
+                                  )}
+                                  {item.used > 0 && (
+                                    <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 500, display: "flex", alignItems: "center", gap: 0.5 }}>
+                                      • ในออเดอร์: {item.used.toLocaleString(undefined, { maximumFractionDigits: decimals })}
+                                    </Typography>
+                                  )}
+                                </Stack>
                               )}
                             </Box>
                             <Typography sx={{ fontSize: "0.74rem", color: "text.secondary", textAlign: "right", fontFamily: "monospace" }}>
-                              Total {item.total.toLocaleString(undefined, { maximumFractionDigits: item.asset === "THB" ? 2 : 6 })}
+                              ≈ {totalValueThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} THB
                             </Typography>
                           </Box>
                         );
@@ -928,154 +994,18 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
               </CardContent>
             </Card>
 
-            {/* Live Tickers Card */}
-            <Card>
-              <CardContent sx={{ p: 3 }}>
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)", pb: 2, mb: 2 }}>
-                  <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                    <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
-                      ราคาตลาดเรียลไทม์
-                    </Typography>
-                    <Chip
-                      size="small"
-                      label={wsConnected ? "LIVE" : "OFFLINE"}
-                      sx={{
-                        height: 20,
-                        fontSize: "10px",
-                        fontWeight: 600,
-                        letterSpacing: "0.08em",
-                        backgroundColor: wsConnected ? "rgba(0, 193, 106, 0.1)" : "rgba(239, 91, 99, 0.1)",
-                        color: wsConnected ? "#00c16a" : "#ef5b63",
-                        border: wsConnected ? "1px solid rgba(0, 193, 106, 0.2)" : "1px solid rgba(239, 91, 99, 0.2)",
-                        animation: wsConnected ? "live-pulse 2s ease-in-out infinite" : "none",
-                        "@keyframes live-pulse": {
-                          "0%, 100%": { boxShadow: "0 0 0 0 rgba(0, 193, 106, 0)" },
-                          "50%": { boxShadow: "0 0 9px 0 rgba(0, 193, 106, 0.2)" },
-                        },
-                      }}
-                    />
-                  </Box>
-                  <TrendingUp size={18} style={{ color: "#3b82f6" }} />
-                </Box>
-
-                <TextField
-                  fullWidth
-                  size="small"
-                  value={marketSearch}
-                  onChange={(e) => {
-                    setMarketSearch(e.target.value);
-                    setMarketPage(0);
-                  }}
-                  placeholder="Search market"
-                  sx={{ mb: 2 }}
-                />
-
-                <TableContainer sx={{ maxHeight: 500, overflowY: "auto" }}>
-                  <Table size="small" stickyHeader sx={{ "& .MuiTableCell-stickyHeader": { backgroundColor: "#0d1321" } }}>
-                    <TableHead>
-                      <TableRow>
-                        <TableCell sx={{ pl: 0 }}>คู่เหรียญ</TableCell>
-                        <TableCell align="right">ล่าสุด</TableCell>
-                        <TableCell align="right" sx={{ display: { xs: "none", sm: "table-cell" } }}>Vol 24h</TableCell>
-                        <TableCell align="right" sx={{ pr: 0 }}>เปลี่ยนแปลง</TableCell>
-                      </TableRow>
-                    </TableHead>
-                    <TableBody>
-                      {sortedTickers.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={4} align="center" sx={{ py: 3, color: "text.secondary", fontSize: "0.85rem" }}>
-                            กำลังโหลดข้อมูลราคาคู่เหรียญ...
-                          </TableCell>
-                        </TableRow>
-                      ) : visibleMarketTickers.length === 0 ? (
-                        <TableRow>
-                          <TableCell colSpan={4} align="center" sx={{ py: 3, color: "text.secondary", fontSize: "0.85rem" }}>
-                            No market pairs found
-                          </TableCell>
-                        </TableRow>
-                      ) : (
-                        visibleMarketTickers.map(([symbol, data]) => {
-                          const isPos = data.percentage > 0;
-                          const pctColor = isPos ? "primary.main" : (data.percentage < 0 ? "error.main" : "text.secondary");
-                          const isSelected = tradeSymbol === symbol;
-
-                          return (
-                            <TableRow
-                              key={symbol}
-                              onClick={() => {
-                                setTradeSymbol(symbol);
-                                setTradeAmount("");
-                              }}
-                              sx={{
-                                cursor: "pointer",
-                                transition: "all 0.15s ease",
-                                "&:hover": {
-                                  backgroundColor: "rgba(255, 255, 255, 0.04)"
-                                },
-                                backgroundColor: isSelected ? "rgba(0, 193, 106, 0.04)" : "transparent",
-                                "& td": {
-                                  borderLeft: isSelected ? "3px solid #00c16a" : "3px solid transparent",
-                                  transition: "border-left 0.15s ease",
-                                }
-                              }}
-                            >
-                              <TableCell sx={{ pl: 1, fontWeight: 500, fontSize: "0.85rem" }}>{symbol}</TableCell>
-                              <TableCell align="right" sx={{ color: "primary.main", fontWeight: 600, fontFamily: "monospace", fontSize: "0.85rem" }}>
-                                {data.last.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                              </TableCell>
-                              <TableCell align="right" sx={{ color: "text.secondary", fontFamily: "monospace", fontSize: "0.8rem", display: { xs: "none", sm: "table-cell" } }}>
-                                {data.quoteVolume > 1000000
-                                  ? `${(data.quoteVolume / 1000000).toFixed(1)}M`
-                                  : data.quoteVolume > 1000
-                                    ? `${(data.quoteVolume / 1000).toFixed(1)}K`
-                                    : data.quoteVolume.toFixed(0)}
-                              </TableCell>
-                              <TableCell align="right" sx={{ pr: 0, color: pctColor, fontWeight: 600, fontFamily: "monospace", fontSize: "0.85rem" }}>
-                                {isPos ? "+" : ""}{data.percentage.toFixed(2)}%
-                              </TableCell>
-                            </TableRow>
-                          );
-                        })
-                      )}
-                    </TableBody>
-                  </Table>
-                </TableContainer>
-                {filteredMarketTickers.length > MARKET_ROWS_PER_PAGE && (
-                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, mt: 2 }}>
-                    <Typography sx={{ fontSize: "0.8rem", color: "text.secondary", fontFamily: "monospace" }}>
-                      {marketPage * MARKET_ROWS_PER_PAGE + 1}-{Math.min((marketPage + 1) * MARKET_ROWS_PER_PAGE, filteredMarketTickers.length)} / {filteredMarketTickers.length}
-                    </Typography>
-                    <Stack direction="row" spacing={1}>
-                      <Tooltip title="Previous page">
-                        <span>
-                          <IconButton
-                            size="small"
-                            disabled={marketPage === 0}
-                            onClick={() => setMarketPage((page) => Math.max(0, page - 1))}
-                          >
-                            <ChevronLeft size={16} />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                      <Typography sx={{ minWidth: 52, textAlign: "center", alignSelf: "center", fontSize: "0.8rem", color: "text.secondary", fontFamily: "monospace" }}>
-                        {marketPage + 1}/{marketPageCount}
-                      </Typography>
-                      <Tooltip title="Next page">
-                        <span>
-                          <IconButton
-                            size="small"
-                            disabled={marketPage >= marketPageCount - 1}
-                            onClick={() => setMarketPage((page) => Math.min(marketPageCount - 1, page + 1))}
-                          >
-                            <ChevronRight size={16} />
-                          </IconButton>
-                        </span>
-                      </Tooltip>
-                    </Stack>
-                  </Box>
-                )}
-              </CardContent>
-            </Card>
+            <LiveMarketTabs
+              filteredMarketTickers={filteredMarketTickers}
+              marketPage={marketPage}
+              marketSearch={marketSearch}
+              setMarketPage={setMarketPage}
+              setMarketSearch={setMarketSearch}
+              setTradeAmount={setTradeAmount}
+              setTradeSymbol={setTradeSymbol}
+              sortedTickers={sortedTickers}
+              tradeSymbol={tradeSymbol}
+              wsConnected={wsConnected}
+            />
           </Stack>
         </Box>
       </Box>
@@ -1142,7 +1072,7 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                             {o.side?.toUpperCase()}
                           </TableCell>
                           <TableCell>
-                            <Chip 
+                            <Chip
                               size="small"
                               label={o.source === "bot" ? "BOT" : "MANUAL"}
                               sx={{
@@ -1266,7 +1196,7 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                             {h.side?.toUpperCase()}
                           </TableCell>
                           <TableCell>
-                            <Chip 
+                            <Chip
                               size="small"
                               label={h.source === "bot" ? "BOT" : "MANUAL"}
                               sx={{

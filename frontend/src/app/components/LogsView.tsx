@@ -2,6 +2,8 @@ import type { RefObject } from "react";
 import { Box, IconButton, Paper, Stack, Typography } from "@mui/material";
 import { Terminal, Trash2 } from "lucide-react";
 
+const LOG_PANEL_HEIGHT = { xs: 320, md: "calc(100vh - 340px)" };
+
 interface LogsViewProps {
   botLogs: string[];
   botLogsRef: RefObject<HTMLDivElement | null>;
@@ -21,7 +23,8 @@ export function LogsView({ botLogs, botLogsRef, clearDevLogs, devLogs, devLogsRe
               xs: "1fr",
               md: "repeat(2, 1fr)"
             },
-            gap: 1
+            gap: 1,
+            alignItems: "stretch",
           }}
         >
           {/* Developer Logs */}
@@ -58,7 +61,9 @@ export function LogsView({ botLogs, botLogsRef, clearDevLogs, devLogs, devLogsRe
               <Box 
                 ref={devLogsRef}
                 sx={{
-                  height: 208,
+                  height: LOG_PANEL_HEIGHT,
+                  minHeight: { md: 380 },
+                  maxHeight: { md: 620 },
                   overflowY: "auto",
                   p: 2,
                   fontFamily: "monospace",
@@ -100,7 +105,9 @@ export function LogsView({ botLogs, botLogsRef, clearDevLogs, devLogs, devLogsRe
               <Box 
                 ref={botLogsRef}
                 sx={{
-                  height: 208,
+                  height: LOG_PANEL_HEIGHT,
+                  minHeight: { md: 380 },
+                  maxHeight: { md: 620 },
                   overflowY: "auto",
                   p: 2,
                   fontFamily: "monospace",

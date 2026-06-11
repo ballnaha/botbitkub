@@ -140,7 +140,7 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
   // Calculate cumulative points starting at 0
   let cumulative = 0;
   const dataPoints = [{ pnl: 0, label: "เริ่มต้น", time: "" }];
-  
+
   if (isEmpty) {
     // Generate dummy flat points for visual structure
     dataPoints.push({ pnl: 0, label: "ไม่มีข้อมูล", time: "" });
@@ -396,7 +396,7 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
                 label={botConfig.dry_run ? "DRY-RUN" : "LIVE"}
                 size="small"
                 sx={{
-                  fontSize: "9.5px",
+                  fontSize: "11.5px",
                   fontWeight: 500,
                   backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.1)" : "rgba(0, 193, 106, 0.12)",
                   color: botConfig.dry_run ? "#94a3b8" : "primary.main",
@@ -408,7 +408,7 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
                 label={`โควตาไม้: ${positions.length} / ${maxTrades}`}
                 size="small"
                 sx={{
-                  fontSize: "9.5px",
+                  fontSize: "11.5px",
                   fontWeight: 600,
                   backgroundColor: positions.length > 0 ? "rgba(59, 130, 246, 0.08)" : "rgba(255, 255, 255, 0.03)",
                   color: positions.length > 0 ? "#60a5fa" : "text.secondary",
@@ -549,136 +549,136 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
         {/* Active Positions Table Card */}
         <Card>
           <CardContent sx={{ p: 2.5 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)", pb: 2, mb: 2 }}>
-            <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
-              ตำแหน่งถือครองของบอทเทรด (Active Positions)
-            </Typography>
-            <TrendingUp size={18} style={{ color: "#3b82f6" }} />
-          </Box>
-
-          {dataLoading ? (
-            <Box sx={{ py: 6, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
-              <CircularProgress size={28} thickness={4} />
-              <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>
-                กำลังโหลดตำแหน่งถือครองของบอท...
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)", pb: 2, mb: 2 }}>
+              <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
+                ตำแหน่งถือครองของบอทเทรด (Active Positions)
               </Typography>
+              <TrendingUp size={18} style={{ color: "#3b82f6" }} />
             </Box>
-          ) : positions.length === 0 ? (
-            <Box sx={{ py: 6, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
-              <Inbox size={36} style={{ color: "rgba(255,255,255,0.15)" }} />
-              <Typography sx={{ color: "text.secondary", fontSize: "0.85rem" }}>
-                ไม่มีตำแหน่งเหรียญที่ถือครองอยู่ขณะนี้
-              </Typography>
-            </Box>
-          ) : (
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ pl: 0 }}>คู่เหรียญ</TableCell>
-                    <TableCell align="center">ประเภท</TableCell>
-                    <TableCell align="right">จำนวนเหรียญ</TableCell>
-                    <TableCell align="right">ราคาซื้อเข้า</TableCell>
-                    <TableCell align="right" sx={{ minWidth: 132 }}>เป้าหมายออกออเดอร์</TableCell>
-                    <TableCell align="right">กำไร / ขาดทุน (PnL)</TableCell>
-                    <TableCell align="right" sx={{ display: { xs: "none", md: "table-cell" } }}>เวลาที่ซื้อ</TableCell>
-                    <TableCell align="center" sx={{ pr: 0 }}>จัดการ</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {positions.map((pos) => {
-                    const isProfit = pos.pnl_thb > 0;
-                    const pnlColor = isProfit ? "primary.main" : (pos.pnl_thb < 0 ? "error.main" : "text.secondary");
 
-                    const slPct = botConfig.stop_loss_pct || -5;
-                    const tpPct = botConfig.take_profit_pct || 10;
-                    const buyPrice = pos.buy_price;
-                    const currentPrice = pos.current_price;
+            {dataLoading ? (
+              <Box sx={{ py: 6, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2 }}>
+                <CircularProgress size={28} thickness={4} />
+                <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>
+                  กำลังโหลดตำแหน่งถือครองของบอท...
+                </Typography>
+              </Box>
+            ) : positions.length === 0 ? (
+              <Box sx={{ py: 6, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                <Inbox size={36} style={{ color: "rgba(255,255,255,0.15)" }} />
+                <Typography sx={{ color: "text.secondary", fontSize: "0.85rem" }}>
+                  ไม่มีตำแหน่งเหรียญที่ถือครองอยู่ขณะนี้
+                </Typography>
+              </Box>
+            ) : (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ pl: 0 }}>คู่เหรียญ</TableCell>
+                      <TableCell align="center">ประเภท</TableCell>
+                      <TableCell align="right">จำนวนเหรียญ</TableCell>
+                      <TableCell align="right">ราคาซื้อเข้า</TableCell>
+                      <TableCell align="right" sx={{ minWidth: 132 }}>เป้าหมายออกออเดอร์</TableCell>
+                      <TableCell align="right">กำไร / ขาดทุน (PnL)</TableCell>
+                      <TableCell align="right" sx={{ display: { xs: "none", md: "table-cell" } }}>เวลาที่ซื้อ</TableCell>
+                      <TableCell align="center" sx={{ pr: 0 }}>จัดการ</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {positions.map((pos) => {
+                      const isProfit = pos.pnl_thb > 0;
+                      const pnlColor = isProfit ? "primary.main" : (pos.pnl_thb < 0 ? "error.main" : "text.secondary");
 
-                    const slPrice = buyPrice * (1 + slPct / 100);
-                    const tpPrice = buyPrice * (1 + tpPct / 100);
+                      const slPct = botConfig.stop_loss_pct || -5;
+                      const tpPct = botConfig.take_profit_pct || 10;
+                      const buyPrice = pos.buy_price;
+                      const currentPrice = pos.current_price;
 
-                    return (
-                      <TableRow key={pos.symbol}>
-                        <TableCell sx={{ pl: 0, fontWeight: 600, fontSize: "0.88rem" }}>{pos.symbol}</TableCell>
-                        <TableCell align="center">
-                          <Chip size="small" label={`${(pos.trade_direction || "long").toUpperCase()}`} variant="outlined" sx={{ fontSize: "9px", height: "19px", borderColor: "rgba(16,185,129,0.3)", color: "primary.main", fontWeight: 500 }} />
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem", color: "text.primary", fontWeight: 600 }}>
-                          {pos.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem", color: "text.secondary" }}>
-                          {pos.buy_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </TableCell>
+                      const slPrice = buyPrice * (1 + slPct / 100);
+                      const tpPrice = buyPrice * (1 + tpPct / 100);
 
-                        <TableCell align="right" sx={{ py: 1.2 }}>
-                          <Box sx={{ display: "grid", gap: 0.45, minWidth: 122 }}>
-                            {[
-                              { label: "SL", value: slPrice, color: "#ff7a82" },
-                              { label: "Now", value: currentPrice, color: isProfit ? "#00c16a" : "#f4f7f4" },
-                              { label: "TP", value: tpPrice, color: "#1fe385" },
-                            ].map((target) => (
-                              <Box
-                                key={target.label}
-                                sx={{
-                                  display: "grid",
-                                  gridTemplateColumns: "34px 1fr",
-                                  alignItems: "baseline",
-                                  gap: 0.75,
-                                  lineHeight: 1.15,
-                                }}
-                              >
-                                <Typography sx={{ fontSize: "0.72rem", fontWeight: 600, color: target.color, fontFamily: "monospace" }}>
-                                  {target.label}
-                                </Typography>
-                                <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: target.color, fontFamily: "monospace", textAlign: "right" }}>
-                                  {target.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                </Typography>
-                              </Box>
-                            ))}
-                          </Box>
-                        </TableCell>
+                      return (
+                        <TableRow key={pos.symbol}>
+                          <TableCell sx={{ pl: 0, fontWeight: 600, fontSize: "0.88rem" }}>{pos.symbol}</TableCell>
+                          <TableCell align="center">
+                            <Chip size="small" label={`${(pos.trade_direction || "long").toUpperCase()}`} variant="outlined" sx={{ fontSize: "9px", height: "19px", borderColor: "rgba(16,185,129,0.3)", color: "primary.main", fontWeight: 500 }} />
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem", color: "text.primary", fontWeight: 600 }}>
+                            {pos.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem", color: "text.secondary" }}>
+                            {pos.buy_price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </TableCell>
 
-                        <TableCell align="right" sx={{ color: pnlColor, fontWeight: 600, fontFamily: "monospace", fontSize: "0.85rem" }}>
-                          {isProfit ? "+" : ""}{pos.pnl_thb.toLocaleString(undefined, { minimumFractionDigits: 2 })} THB ({isProfit ? "+" : ""}{pos.pnl_pct.toFixed(2)}%)
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.8rem", color: "text.secondary", display: { xs: "none", md: "table-cell" } }}>
-                          {pos.buy_time}
-                        </TableCell>
-                        <TableCell align="center" sx={{ pr: 0 }}>
-                          <Button
-                            onClick={() => handleOpenConfirmPanic(pos.symbol)}
-                            variant="outlined"
-                            size="small"
-                            sx={{
-                              fontSize: "10px",
-                              fontWeight: 600,
-                              py: 0.6,
-                              px: 1.5,
-                              borderRadius: "9px",
-                              borderColor: "rgba(239, 91, 99, 0.3)",
-                              backgroundColor: "rgba(239, 91, 99, 0.04)",
-                              color: "#ff7a82",
-                              "&:hover": {
-                                backgroundColor: "error.main",
-                                color: "white",
-                                borderColor: "error.main",
-                                boxShadow: "0 0 11px rgba(239, 91, 99, 0.45)"
-                              }
-                            }}
-                          >
-                            Panic Sell
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
-          )}
-        </CardContent>
-      </Card>
+                          <TableCell align="right" sx={{ py: 1.2 }}>
+                            <Box sx={{ display: "grid", gap: 0.45, minWidth: 122 }}>
+                              {[
+                                { label: "SL", value: slPrice, color: "#ff7a82" },
+                                { label: "Now", value: currentPrice, color: isProfit ? "#00c16a" : "#f4f7f4" },
+                                { label: "TP", value: tpPrice, color: "#1fe385" },
+                              ].map((target) => (
+                                <Box
+                                  key={target.label}
+                                  sx={{
+                                    display: "grid",
+                                    gridTemplateColumns: "34px 1fr",
+                                    alignItems: "baseline",
+                                    gap: 0.75,
+                                    lineHeight: 1.15,
+                                  }}
+                                >
+                                  <Typography sx={{ fontSize: "0.72rem", fontWeight: 600, color: target.color, fontFamily: "monospace" }}>
+                                    {target.label}
+                                  </Typography>
+                                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: target.color, fontFamily: "monospace", textAlign: "right" }}>
+                                    {target.value.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                  </Typography>
+                                </Box>
+                              ))}
+                            </Box>
+                          </TableCell>
+
+                          <TableCell align="right" sx={{ color: pnlColor, fontWeight: 600, fontFamily: "monospace", fontSize: "0.85rem" }}>
+                            {isProfit ? "+" : ""}{pos.pnl_thb.toLocaleString(undefined, { minimumFractionDigits: 2 })} THB ({isProfit ? "+" : ""}{pos.pnl_pct.toFixed(2)}%)
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.8rem", color: "text.secondary", display: { xs: "none", md: "table-cell" } }}>
+                            {pos.buy_time}
+                          </TableCell>
+                          <TableCell align="center" sx={{ pr: 0 }}>
+                            <Button
+                              onClick={() => handleOpenConfirmPanic(pos.symbol)}
+                              variant="outlined"
+                              size="small"
+                              sx={{
+                                fontSize: "10px",
+                                fontWeight: 600,
+                                py: 0.6,
+                                px: 1.5,
+                                borderRadius: "9px",
+                                borderColor: "rgba(239, 91, 99, 0.3)",
+                                backgroundColor: "rgba(239, 91, 99, 0.04)",
+                                color: "#ff7a82",
+                                "&:hover": {
+                                  backgroundColor: "error.main",
+                                  color: "white",
+                                  borderColor: "error.main",
+                                  boxShadow: "0 0 11px rgba(239, 91, 99, 0.45)"
+                                }
+                              }}
+                            >
+                              Panic Sell
+                            </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardContent>
+        </Card>
       </Stack>
 
       {/* Trade History Card */}
@@ -787,77 +787,77 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
             </Box>
           ) : (
             <>
-            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5, gap: 1, flexWrap: "wrap" }}>
-              <Typography sx={{ fontSize: "0.78rem", color: "text.secondary" }}>
-                แสดง {filteredHistory.length.toLocaleString()} รายการ จากทั้งหมด {history.length.toLocaleString()} รายการ
-              </Typography>
-              <Typography sx={{ fontSize: "0.78rem", color: "text.secondary" }}>
-                ช่วง: {selectedTradeHistoryRange?.label || "All"}
-              </Typography>
-            </Box>
-            <TableContainer>
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ pl: 0 }}>วัน-เวลา</TableCell>
-                    <TableCell>คู่เหรียญ</TableCell>
-                    <TableCell align="center">ธุรกรรม</TableCell>
-                    <TableCell align="right">จำนวน</TableCell>
-                    <TableCell align="right">ราคาซื้อเข้า</TableCell>
-                    <TableCell align="right">ราคาขายออก</TableCell>
-                    <TableCell align="right">มูลค่ารวม THB</TableCell>
-                    <TableCell align="right">กำไร/ขาดทุน</TableCell>
-                    <TableCell sx={{ pr: 0, display: { xs: "none", md: "table-cell" } }}>สาเหตุการขาย</TableCell>
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {filteredHistory.map((item, index) => {
-                    const isBuy = item.side.toUpperCase() === "BUY";
-                    const pnlText = item.pnl_thb !== null
-                      ? `${item.pnl_thb > 0 ? "+" : ""}${item.pnl_thb.toLocaleString(undefined, { minimumFractionDigits: 2 })} THB (${item.pnl_thb > 0 ? "+" : ""}${Number(item.pnl_percent).toFixed(2)}%)`
-                      : "-";
-                    const pnlColor = item.pnl_thb !== null
-                      ? (item.pnl_thb > 0 ? "primary.main" : "error.main")
-                      : "text.secondary";
-                    const pnlWeight = item.pnl_thb !== null ? 600 : 500;
+              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1.5, gap: 1, flexWrap: "wrap" }}>
+                <Typography sx={{ fontSize: "0.78rem", color: "text.secondary" }}>
+                  แสดง {filteredHistory.length.toLocaleString()} รายการ จากทั้งหมด {history.length.toLocaleString()} รายการ
+                </Typography>
+                <Typography sx={{ fontSize: "0.78rem", color: "text.secondary" }}>
+                  ช่วง: {selectedTradeHistoryRange?.label || "All"}
+                </Typography>
+              </Box>
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ pl: 0 }}>วัน-เวลา</TableCell>
+                      <TableCell>คู่เหรียญ</TableCell>
+                      <TableCell align="center">ธุรกรรม</TableCell>
+                      <TableCell align="right">จำนวน</TableCell>
+                      <TableCell align="right">ราคาซื้อเข้า</TableCell>
+                      <TableCell align="right">ราคาขายออก</TableCell>
+                      <TableCell align="right">มูลค่ารวม THB</TableCell>
+                      <TableCell align="right">กำไร/ขาดทุน</TableCell>
+                      <TableCell sx={{ pr: 0, display: { xs: "none", md: "table-cell" } }}>สาเหตุการขาย</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {filteredHistory.map((item, index) => {
+                      const isBuy = item.side.toUpperCase() === "BUY";
+                      const pnlText = item.pnl_thb !== null
+                        ? `${item.pnl_thb > 0 ? "+" : ""}${item.pnl_thb.toLocaleString(undefined, { minimumFractionDigits: 2 })} THB (${item.pnl_thb > 0 ? "+" : ""}${Number(item.pnl_percent).toFixed(2)}%)`
+                        : "-";
+                      const pnlColor = item.pnl_thb !== null
+                        ? (item.pnl_thb > 0 ? "primary.main" : "error.main")
+                        : "text.secondary";
+                      const pnlWeight = item.pnl_thb !== null ? 600 : 500;
 
-                    return (
-                      <TableRow key={index}>
-                        <TableCell sx={{ pl: 0, fontFamily: "monospace", fontSize: "0.8rem", color: "text.secondary" }}>
-                          {item.timestamp}
-                        </TableCell>
-                        <TableCell sx={{ fontWeight: 600, fontSize: "0.85rem" }}>{item.symbol}</TableCell>
-                        <TableCell align="center">
-                          {isBuy ? (
-                            <Chip size="small" label="BUY" variant="outlined" color="success" sx={{ fontSize: "9px", height: "19px", fontWeight: 600 }} />
-                          ) : (
-                            <Chip size="small" label="SELL" variant="outlined" color="error" sx={{ fontSize: "9px", height: "19px", fontWeight: 600 }} />
-                          )}
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
-                          {item.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem", color: "text.secondary" }}>
-                          {item.buy_price !== undefined ? item.buy_price.toLocaleString(undefined, { minimumFractionDigits: 2 }) : "-"}
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
-                          {item.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
-                          {item.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                        </TableCell>
-                        <TableCell align="right" sx={{ color: pnlColor, fontWeight: pnlWeight, fontFamily: "monospace", fontSize: "0.85rem" }}>
-                          {pnlText}
-                        </TableCell>
-                        <TableCell sx={{ pr: 0, fontSize: "11px", color: "text.secondary", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: { xs: "none", md: "table-cell" } }} title={item.reason}>
-                          {item.reason}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </TableContainer>
+                      return (
+                        <TableRow key={index}>
+                          <TableCell sx={{ pl: 0, fontFamily: "monospace", fontSize: "0.8rem", color: "text.secondary" }}>
+                            {item.timestamp}
+                          </TableCell>
+                          <TableCell sx={{ fontWeight: 600, fontSize: "0.85rem" }}>{item.symbol}</TableCell>
+                          <TableCell align="center">
+                            {isBuy ? (
+                              <Chip size="small" label="BUY" variant="outlined" color="success" sx={{ fontSize: "9px", height: "19px", fontWeight: 600 }} />
+                            ) : (
+                              <Chip size="small" label="SELL" variant="outlined" color="error" sx={{ fontSize: "9px", height: "19px", fontWeight: 600 }} />
+                            )}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
+                            {item.amount.toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem", color: "text.secondary" }}>
+                            {item.buy_price !== undefined ? item.buy_price.toLocaleString(undefined, { minimumFractionDigits: 2 }) : "-"}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
+                            {item.price.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem" }}>
+                            {item.total.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                          </TableCell>
+                          <TableCell align="right" sx={{ color: pnlColor, fontWeight: pnlWeight, fontFamily: "monospace", fontSize: "0.85rem" }}>
+                            {pnlText}
+                          </TableCell>
+                          <TableCell sx={{ pr: 0, fontSize: "11px", color: "text.secondary", maxWidth: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: { xs: "none", md: "table-cell" } }} title={item.reason}>
+                            {item.reason}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             </>
           )}
         </CardContent>

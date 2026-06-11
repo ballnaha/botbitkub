@@ -9,6 +9,8 @@ export interface BalanceItem {
 
 export interface TickerData {
   last: number;
+  bid?: number;
+  ask?: number;
   high: number;
   low: number;
   percentage: number;

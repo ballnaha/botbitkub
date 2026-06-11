@@ -324,6 +324,8 @@ async def get_tickers():
                 t = data[bitkub_symbol]
                 parsed_tickers[standard_symbol] = {
                     "last": t.get("last"),
+                    "bid": t.get("highestBid"),
+                    "ask": t.get("lowestAsk"),
                     "high": t.get("high24hr"),
                     "low": t.get("low24hr"),
                     "percentage": t.get("percentChange"),
