@@ -41,10 +41,10 @@ app = FastAPI(title="Bitkub API Dashboard Proxy (Direct Client)")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",
-        "http://127.0.0.1:3000",
-        "http://localhost:8000",
-        "http://127.0.0.1:8000"
+        "http://localhost:4011",
+        "http://127.0.0.1:4011",
+        "http://localhost:8282",
+        "http://127.0.0.1:8282"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -279,13 +279,14 @@ async def get_tickers():
         response = await asyncio.to_thread(bitkub_http.get, url)
         data = response.json()
         
-        symbols_map = {
-            'BTC/THB': 'THB_BTC',
-            'ETH/THB': 'THB_ETH',
-            'KUB/THB': 'THB_KUB',
-            'XRP/THB': 'THB_XRP',
-            'USDT/THB': 'THB_USDT'
-        }
+        symbols = bot.config.get("symbols", []) if bot else ["BTC/THB", "ETH/THB", "KUB/THB", "XRP/THB", "USDT/THB"]
+        symbols_map = {}
+        for s in symbols:
+            parts = s.split("/")
+            if len(parts) == 2:
+                symbols_map[s] = f"THB_{parts[0]}"
+            else:
+                symbols_map[s] = s
         
         parsed_tickers = {}
         for standard_symbol, bitkub_symbol in symbols_map.items():
@@ -448,7 +449,7 @@ async def get_bot_positions():
 async def get_bot_history():
     if not bot:
         return []
-    return bot.history
+    return bot.get_history()
 
 @app.get("/api/bot/logs")
 async def get_bot_logs():
@@ -471,15 +472,11 @@ async def bot_panic_sell(req: PanicSellRequest):
         r = await asyncio.to_thread(bitkub_http.get, url, timeout=5)
         ticker_data = r.json()
         
-        symbols_map = {
-            "BTC/THB": "THB_BTC",
-            "ETH/THB": "THB_ETH",
-            "KUB/THB": "THB_KUB",
-            "XRP/THB": "THB_XRP",
-            "USDT/THB": "THB_USDT"
-        }
-        
-        bitkub_symbol = symbols_map.get(symbol)
+        parts = symbol.split("/")
+        if len(parts) == 2:
+            bitkub_symbol = f"THB_{parts[0]}"
+        else:
+            bitkub_symbol = symbol
         if bitkub_symbol in ticker_data:
             last_price = float(ticker_data[bitkub_symbol]["last"])
         else:
@@ -498,5 +495,5 @@ if __name__ == "__main__":
     import uvicorn
     import os
     host = os.getenv("HOST", "127.0.0.1")
-    port = int(os.getenv("PORT", "8000"))
+    port = int(os.getenv("PORT", "8282"))
     uvicorn.run("backend:app", host=host, port=port, reload=False)

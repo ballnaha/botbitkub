@@ -28,22 +28,11 @@ body {
     background: rgba(255, 255, 255, 0.08);
     border-radius: 8px;
 }
-::-webkit-scrollbar-thumb:hover {
-    background: rgba(255, 255, 255, 0.18);
-}
-
 /* Glassmorphic Premium Cards */
 .glass-card {
     background: rgba(13, 17, 28, 0.45);
     border: 1px solid rgba(255, 255, 255, 0.04);
-    backdrop-filter: blur(20px);
-    box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.4);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.glass-card:hover {
-    border-color: rgba(16, 185, 129, 0.12);
-    box-shadow: 0 12px 40px 0 rgba(16, 185, 129, 0.04);
-    transform: translateY(-2px);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.24);
 }
 
 /* Mock Terminal Styling */
@@ -114,11 +103,6 @@ body {
     border: 1px solid rgba(255, 255, 255, 0.04);
     border-radius: 12px;
     padding: 12px;
-    transition: all 0.2s ease;
-}
-.balance-item-new:hover {
-    background: rgba(255, 255, 255, 0.03);
-    border-color: rgba(255, 255, 255, 0.08);
 }
 .balance-item-new.thb-active {
     background: rgba(16, 185, 129, 0.03);
@@ -127,20 +111,35 @@ body {
 
 /* Active Glow effects */
 .glow-emerald {
-    filter: drop-shadow(0 0 8px rgba(16, 185, 129, 0.3));
+    filter: drop-shadow(0 0 10px rgba(16, 185, 129, 0.5));
 }
 .glow-rose {
-    filter: drop-shadow(0 0 8px rgba(244, 63, 94, 0.3));
+    filter: drop-shadow(0 0 10px rgba(244, 63, 94, 0.5));
 }
 .glow-blue {
-    filter: drop-shadow(0 0 8px rgba(59, 130, 246, 0.3));
+    filter: drop-shadow(0 0 10px rgba(59, 130, 246, 0.5));
+}
+
+@keyframes emerald-glow-pulse {
+    0%, 100% { filter: drop-shadow(0 0 4px rgba(16, 185, 129, 0.3)); }
+    50% { filter: drop-shadow(0 0 12px rgba(16, 185, 129, 0.65)); }
+}
+.glow-pulse-emerald {
+    animation: emerald-glow-pulse 2s infinite ease-in-out;
+}
+
+@keyframes live-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    50% { box-shadow: 0 0 10px 2px rgba(16, 185, 129, 0.25); }
+}
+.live-pulse-badge {
+    animation: live-pulse 2s infinite ease-in-out;
 }
 
 /* Form Controls Custom Focus */
 .trading-input {
     background: rgba(8, 11, 17, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.05);
-    transition: all 0.2s ease;
 }
 .trading-input:focus {
     border-color: #10b981;

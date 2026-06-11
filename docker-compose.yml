@@ -6,6 +6,6 @@ services:
     container_name: bitkub-dashboard
     restart: always
     ports:
-      - "8000:8000"
+      - "8282:8282"
     env_file:
       - .env

@@ -13,11 +13,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 # คัดลอกซอร์สโค้ดทั้งหมดเข้าไปใน Container
 COPY . .
 
-# เปิดพอร์ต 8000
-EXPOSE 8000
+# เปิดพอร์ต 8282
+EXPOSE 8282
 
 # ตั้งค่าให้ Python แสดง log ทันทีโดยไม่บัฟเฟอร์
 ENV PYTHONUNBUFFERED=1
 
 # คำสั่งสำหรับรันเซิร์ฟเวอร์ โดยผูกเข้ากับโฮสต์ 0.0.0.0 เพื่อให้ VPS รับทราฟฟิกได้
-CMD ["uvicorn", "backend:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "backend:app", "--host", "0.0.0.0", "--port", "8282"]

@@ -4,6 +4,7 @@ import json
 import hmac
 import hashlib
 import threading
+import sqlite3
 import requests
 import pandas as pd
 import numpy as np
@@ -31,25 +32,294 @@ DEFAULT_CONFIG = {
     "max_open_trades": 3,
     "trade_direction": "long",
     "leverage": 1,
-    "symbols": ["BTC/THB", "ETH/THB", "KUB/THB", "XRP/THB", "USDT/THB"],
+    "symbols": [
+        "BTC/THB", "ETH/THB", "KUB/THB", "XRP/THB", "USDT/THB",
+        "SOL/THB", "ADA/THB", "DOGE/THB", "NEAR/THB", "SUI/THB",
+        "OP/THB", "XLM/THB", "BNB/THB", "BCH/THB", "UNI/THB",
+        "LINK/THB", "IOST/THB", "SIX/THB", "AVAX/THB", "JFIN/THB",
+        "BONK/THB", "CRV/THB", "GALA/THB", "HBAR/THB", "FET/THB",
+        "CHZ/THB", "JUP/THB", "WLD/THB", "ONDO/THB", "LUNA/THB"
+    ],
     "timeframe": "15"  # 15 นาที
 }
 
 class BotRunner:
     def __init__(self):
+        self.db_path = "bot_data.db"
         self.config = self.load_json(BOT_CONFIG_FILE, DEFAULT_CONFIG)
-        self.positions = self.load_json(POSITIONS_FILE, {})
-        self.history = self.load_json(HISTORY_FILE, [])
+        self.positions = {}
         self.logs = []
         self.thread = None
         self.stop_event = threading.Event()
         
+        # Initialize Database and Load Positions
+        self.init_db()
+        self.load_positions_from_db()
+        
         # เพิ่ม Log เริ่มต้น
-        self.add_log("Bot system initialized.")
+        self.add_log("Bot system initialized with SQLite database.")
         
         # ถ้าเปิดไว้ในคอนฟิก ให้รันเมื่อเริ่มโปรแกรม
         if self.config.get("is_running", False):
             self.start()
+
+    def init_db(self):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Create positions table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS positions (
+                    symbol TEXT PRIMARY KEY,
+                    buy_price REAL,
+                    buy_time TEXT,
+                    amount REAL,
+                    current_price REAL,
+                    pnl_percent REAL,
+                    pnl_thb REAL,
+                    trade_direction TEXT,
+                    leverage INTEGER,
+                    margin_mode TEXT
+                )
+            """)
+            
+            # Create trade_history table
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS trade_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    symbol TEXT,
+                    buy_time TEXT,
+                    sell_time TEXT,
+                    buy_price REAL,
+                    sell_price REAL,
+                    amount REAL,
+                    pnl_percent REAL,
+                    pnl_thb REAL,
+                    reason TEXT,
+                    mode TEXT,
+                    trade_direction TEXT,
+                    leverage INTEGER,
+                    margin_mode TEXT
+                )
+            """)
+            conn.commit()
+            
+            # Legacy JSON migration
+            # 1. Migrate positions
+            if os.path.exists(POSITIONS_FILE):
+                try:
+                    legacy_positions = self.load_json(POSITIONS_FILE, {})
+                    for symbol, pos in legacy_positions.items():
+                        cursor.execute("""
+                            INSERT OR REPLACE INTO positions (
+                                symbol, buy_price, buy_time, amount, current_price,
+                                pnl_percent, pnl_thb, trade_direction, leverage, margin_mode
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            symbol,
+                            float(pos.get("buy_price", 0.0)),
+                            pos.get("buy_time", ""),
+                            float(pos.get("amount", 0.0)),
+                            float(pos.get("current_price", 0.0)),
+                            float(pos.get("pnl_percent", 0.0)),
+                            float(pos.get("pnl_thb", 0.0)),
+                            pos.get("trade_direction", "long"),
+                            int(pos.get("leverage", 1)),
+                            pos.get("margin_mode", "spot")
+                        ))
+                    conn.commit()
+                    os.rename(POSITIONS_FILE, POSITIONS_FILE + ".bak")
+                    self.add_log("Migrated active positions from JSON to SQLite successfully.")
+                except Exception as e:
+                    self.add_log(f"Error migrating active positions JSON: {str(e)}")
+            
+            # 2. Migrate trade history
+            if os.path.exists(HISTORY_FILE):
+                try:
+                    legacy_history = self.load_json(HISTORY_FILE, [])
+                    for h in legacy_history:
+                        cursor.execute("""
+                            INSERT INTO trade_history (
+                                symbol, buy_time, sell_time, buy_price, sell_price,
+                                amount, pnl_percent, pnl_thb, reason, mode,
+                                trade_direction, leverage, margin_mode
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        """, (
+                            h.get("symbol"),
+                            h.get("buy_time"),
+                            h.get("sell_time"),
+                            float(h.get("buy_price", 0.0)),
+                            float(h.get("sell_price", 0.0)),
+                            float(h.get("amount", 0.0)),
+                            float(h.get("pnl_percent", 0.0)) if h.get("pnl_percent") is not None else 0.0,
+                            float(h.get("pnl_thb", 0.0)) if h.get("pnl_thb") is not None else 0.0,
+                            h.get("reason"),
+                            h.get("mode", "Dry-Run"),
+                            h.get("trade_direction", "long"),
+                            int(h.get("leverage", 1)),
+                            h.get("margin_mode", "spot")
+                        ))
+                    conn.commit()
+                    os.rename(HISTORY_FILE, HISTORY_FILE + ".bak")
+                    self.add_log("Migrated trade history from JSON to SQLite successfully.")
+                except Exception as e:
+                    self.add_log(f"Error migrating trade history JSON: {str(e)}")
+                    
+            conn.close()
+        except Exception as e:
+            self.add_log(f"Error initializing database: {str(e)}")
+
+    def load_positions_from_db(self):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM positions")
+            rows = cursor.fetchall()
+            self.positions = {}
+            for row in rows:
+                symbol = row["symbol"]
+                self.positions[symbol] = {
+                    "symbol": symbol,
+                    "buy_price": row["buy_price"],
+                    "buy_time": row["buy_time"],
+                    "amount": row["amount"],
+                    "current_price": row["current_price"],
+                    "pnl_percent": row["pnl_percent"],
+                    "pnl_thb": row["pnl_thb"],
+                    "trade_direction": row["trade_direction"],
+                    "leverage": row["leverage"],
+                    "margin_mode": row["margin_mode"]
+                }
+            conn.close()
+        except Exception as e:
+            self.add_log(f"Error loading positions from DB: {str(e)}")
+            self.positions = {}
+
+    def save_position_db(self, symbol, pos):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT OR REPLACE INTO positions (
+                    symbol, buy_price, buy_time, amount, current_price,
+                    pnl_percent, pnl_thb, trade_direction, leverage, margin_mode
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                symbol,
+                pos["buy_price"],
+                pos["buy_time"],
+                pos["amount"],
+                pos["current_price"],
+                pos["pnl_percent"],
+                pos["pnl_thb"],
+                pos.get("trade_direction", "long"),
+                pos.get("leverage", 1),
+                pos.get("margin_mode", "spot")
+            ))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            self.add_log(f"Error saving position {symbol} to DB: {str(e)}")
+
+    def delete_position_db(self, symbol):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM positions WHERE symbol = ?", (symbol,))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            self.add_log(f"Error deleting position {symbol} from DB: {str(e)}")
+
+    def sync_positions_db(self):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            # Clear table first to ensure removed items are deleted
+            cursor.execute("DELETE FROM positions")
+            for symbol, pos in list(self.positions.items()):
+                cursor.execute("""
+                    INSERT OR REPLACE INTO positions (
+                        symbol, buy_price, buy_time, amount, current_price,
+                        pnl_percent, pnl_thb, trade_direction, leverage, margin_mode
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    symbol,
+                    pos["buy_price"],
+                    pos["buy_time"],
+                    pos["amount"],
+                    pos["current_price"],
+                    pos["pnl_percent"],
+                    pos["pnl_thb"],
+                    pos.get("trade_direction", "long"),
+                    pos.get("leverage", 1),
+                    pos.get("margin_mode", "spot")
+                ))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            self.add_log(f"Error syncing positions to DB: {str(e)}")
+
+    def save_history_db(self, h):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            cursor.execute("""
+                INSERT INTO trade_history (
+                    symbol, buy_time, sell_time, buy_price, sell_price,
+                    amount, pnl_percent, pnl_thb, reason, mode,
+                    trade_direction, leverage, margin_mode
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                h["symbol"],
+                h["buy_time"],
+                h["sell_time"],
+                h["buy_price"],
+                h["sell_price"],
+                h["amount"],
+                h["pnl_percent"],
+                h["pnl_thb"],
+                h["reason"],
+                h.get("mode", "Dry-Run"),
+                h.get("trade_direction", "long"),
+                h.get("leverage", 1),
+                h.get("margin_mode", "spot")
+            ))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            self.add_log(f"Error saving history to DB: {str(e)}")
+
+    def get_history(self):
+        try:
+            conn = sqlite3.connect(self.db_path)
+            conn.row_factory = sqlite3.Row
+            cursor = conn.cursor()
+            cursor.execute("SELECT * FROM trade_history ORDER BY id ASC")
+            rows = cursor.fetchall()
+            history_list = []
+            for row in rows:
+                history_list.append({
+                    "timestamp": row["sell_time"],
+                    "symbol": row["symbol"],
+                    "side": "SELL",
+                    "amount": row["amount"],
+                    "buy_price": row["buy_price"],
+                    "price": row["sell_price"],
+                    "total": row["amount"] * row["sell_price"],
+                    "pnl_thb": row["pnl_thb"],
+                    "pnl_percent": row["pnl_percent"],
+                    "reason": row["reason"],
+                    "buy_time": row["buy_time"],
+                    "mode": row["mode"]
+                })
+            conn.close()
+            return history_list
+        except Exception as e:
+            self.add_log(f"Error querying history from DB: {str(e)}")
+            return []
 
     def load_json(self, filepath, default_val):
         if os.path.exists(filepath):
@@ -208,7 +478,7 @@ class BotRunner:
                     "leverage": 1,
                     "margin_mode": "spot"
                 }
-                self.save_json(POSITIONS_FILE, self.positions)
+                self.sync_positions_db()
                 self.add_log(f"📥 [Dry-Run Buy] Bought {crypto_amount:.6f} {symbol.split('/')[0]} (Spent {stake} THB)")
             else:
                 # ส่งคำสั่งซื้อจริงผ่าน API (ใช้ฟังก์ชันจาก backend.py หรือสร้างโมดูลส่งตรง)
@@ -232,7 +502,7 @@ class BotRunner:
                             "leverage": 1,
                             "margin_mode": "spot"
                         }
-                        self.save_json(POSITIONS_FILE, self.positions)
+                        self.sync_positions_db()
                         self.add_log(f"📥 [LIVE Buy] Order matched: {filled_amt:.6f} at {filled_price:,.2f} THB")
                 except Exception as e:
                     self.add_log(f"❌ [LIVE Buy Failed] {symbol}: {str(e)}")
@@ -298,11 +568,10 @@ class BotRunner:
             }
             
             # บันทึกลงประวัติและลบตัวถือครอง
-            self.history.append(trade_record)
-            self.save_json(HISTORY_FILE, self.history)
+            self.save_history_db(trade_record)
             
             del self.positions[symbol]
-            self.save_json(POSITIONS_FILE, self.positions)
+            self.delete_position_db(symbol)
             
             self.add_log(f"📤 [Dry-Run Sell] Sold {amount:.6f} {symbol.split('/')[0]} | PnL: {pnl_pct:.2f}% ({pnl_thb:,.2f} THB)")
             return True
@@ -335,11 +604,10 @@ class BotRunner:
                         "margin_mode": position.get("margin_mode", "spot")
                     }
                     
-                    self.history.append(trade_record)
-                    self.save_json(HISTORY_FILE, self.history)
+                    self.save_history_db(trade_record)
                     
                     del self.positions[symbol]
-                    self.save_json(POSITIONS_FILE, self.positions)
+                    self.delete_position_db(symbol)
                     
                     self.add_log(f"📤 [LIVE Sell] Sold successfully | PnL: {pnl_pct:.2f}% ({pnl_thb:,.2f} THB)")
                     return True
@@ -360,16 +628,13 @@ class BotRunner:
             if r.status_code == 200:
                 ticker_data = r.json()
                 
-                symbols_map = {
-                    "BTC/THB": "THB_BTC",
-                    "ETH/THB": "THB_ETH",
-                    "KUB/THB": "THB_KUB",
-                    "XRP/THB": "THB_XRP",
-                    "USDT/THB": "THB_USDT"
-                }
-                
                 for symbol, pos in list(self.positions.items()):
-                    bitkub_symbol = symbols_map.get(symbol)
+                    parts = symbol.split("/")
+                    if len(parts) == 2:
+                        bitkub_symbol = f"THB_{parts[0]}"
+                    else:
+                        bitkub_symbol = symbol
+                        
                     if bitkub_symbol in ticker_data:
                         current_price = float(ticker_data[bitkub_symbol]["last"])
                         buy_price = pos["buy_price"]
@@ -380,7 +645,7 @@ class BotRunner:
                         pos["pnl_percent"] = ((current_price - buy_price) / buy_price) * 100
                         pos["pnl_thb"] = (amount * current_price * 0.9975) - (amount * buy_price)
                         
-                self.save_json(POSITIONS_FILE, self.positions)
+                self.sync_positions_db()
         except Exception as e:
             self.add_log(f"Error updating positions PnL: {str(e)}")
 
