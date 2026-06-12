@@ -687,7 +687,7 @@ export function SettingsView({
                         </Box>
                         <Box sx={{ minWidth: 0 }}>
                           <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "text.primary" }}>
-                            Gemini AI Signal Review
+                            AI Signal Review
                           </Typography>
                           <Typography sx={{ fontSize: "0.76rem", color: "text.secondary", lineHeight: 1.35 }}>
                             ให้ AI ช่วยให้คะแนนสัญญาณซื้อหลัง strategy ทำงาน และก่อนบอทส่งคำสั่งซื้อ
@@ -708,7 +708,7 @@ export function SettingsView({
                       <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1.1fr 0.75fr 0.75fr" }, gap: 1.2 }}>
                         <Stack spacing={0.8}>
                           <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            Gemini Model
+                            AI Model
                           </Typography>
                           <TextField
                             value={botConfig.ai_model || "gemini-3.5-flash"}
@@ -761,7 +761,7 @@ export function SettingsView({
                           "& .MuiAlert-icon": { color: "#60a5fa" },
                         }}
                       >
-                        ตั้งค่า `GEMINI_API_KEY` ในไฟล์ `.env` เพื่อให้ AI ทำงานจริง หากยังไม่ตั้งค่า บอทจะ fallback ไปใช้ strategy เดิมและบันทึก log แจ้งไว้
+                        ตอนนี้ระบบรองรับ Gemini ผ่าน `GEMINI_API_KEY` ในไฟล์ `.env` หาก AI ไม่พร้อมหรือวิเคราะห์ไม่สำเร็จ บอทจะข้ามการซื้อเพื่อความปลอดภัย
                       </Alert>
                     )}
                   </Stack>
@@ -1370,11 +1370,11 @@ export function SettingsView({
 
                         <Stack spacing={1} sx={{ gridColumn: { sm: "span 2" } }}>
                           <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            Gemini API Key
+                            AI API Key (Gemini)
                           </Typography>
                           <TextField
                             type="password"
-                            placeholder={maskedGeminiKey || "กรุณากรอก Gemini API Key"}
+                            placeholder={maskedGeminiKey || "กรุณากรอก API Key ของ Gemini"}
                             value={geminiApiKey}
                             onChange={(e) => setGeminiApiKey(e.target.value)}
                             size="small"
@@ -1390,7 +1390,7 @@ export function SettingsView({
                             }}
                           />
                           <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
-                            ใช้สำหรับ Gemini AI Signal Review เท่านั้น ไม่เกี่ยวกับสิทธิ์ส่งคำสั่งซื้อขาย Bitkub
+                            ใช้สำหรับ AI Signal Review ผ่าน Gemini เท่านั้น ไม่เกี่ยวกับสิทธิ์ส่งคำสั่งซื้อขาย Bitkub
                           </Typography>
                         </Stack>
 

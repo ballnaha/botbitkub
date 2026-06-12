@@ -17,7 +17,7 @@ export function Footer({
   activeView,
 }: FooterProps) {
   // Determine consolidated system status
-  const wsRequired = activeView !== "settings";
+  const wsRequired = activeView === "bot" || activeView === "manual";
   const isOnline = backendConnected && (!wsRequired || wsConnected);
   const isLimited = backendConnected && wsRequired && !wsConnected;
 

@@ -167,7 +167,6 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
   const [tradeHistory, setTradeHistory] = useState<any[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
-  const [filterCurrentSymbol, setFilterCurrentSymbol] = useState(false);
   const [cancellingId, setCancellingId] = useState<string | null>(null);
   const [recentlyCancelledIds, setRecentlyCancelledIds] = useState<string[]>([]);
 
@@ -265,19 +264,12 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
   }, []);
 
   const displayedOpenOrders = useMemo(() => {
-    const activeOrders = openOrders.filter((o) => !recentlyCancelledIds.includes(o.id));
-    if (filterCurrentSymbol) {
-      return activeOrders.filter((o) => o.symbol === tradeSymbol);
-    }
-    return activeOrders;
-  }, [openOrders, filterCurrentSymbol, tradeSymbol, recentlyCancelledIds]);
+    return openOrders.filter((o) => !recentlyCancelledIds.includes(o.id));
+  }, [openOrders, recentlyCancelledIds]);
 
   const displayedHistory = useMemo(() => {
-    if (filterCurrentSymbol) {
-      return tradeHistory.filter((o) => o.symbol === tradeSymbol);
-    }
     return tradeHistory;
-  }, [tradeHistory, filterCurrentSymbol, tradeSymbol]);
+  }, [tradeHistory]);
 
   const formatTimestamp = (ts: string | number) => {
     if (!ts) return "-";
@@ -1015,30 +1007,21 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
 
         {/* Open Orders Card */}
         <Card sx={{ background: "rgba(8, 12, 20, 0.72)", backdropFilter: "blur(24px)", border: "1px solid rgba(255, 255, 255, 0.04)", borderRadius: "20px" }}>
-          <Box sx={{ p: 2.5, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-            <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
+          <Box sx={{ px: 2, py: 1.5, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+            <Typography sx={{ fontWeight: 600, fontSize: "0.88rem", color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
               ⁙ คำสั่งที่เปิดอยู่ (Open Orders)
             </Typography>
-            <FormControlLabel
-              control={
-                <Checkbox
-                  size="small"
-                  checked={filterCurrentSymbol}
-                  onChange={(e) => setFilterCurrentSymbol(e.target.checked)}
-                  sx={{
-                    color: "rgba(255, 255, 255, 0.3)",
-                    "&.Mui-checked": {
-                      color: "primary.main",
-                    }
-                  }}
-                />
-              }
-              label={<Typography sx={{ fontSize: "0.85rem", color: "text.secondary" }}>แสดง {tradeSymbol}</Typography>}
-            />
           </Box>
           <CardContent sx={{ p: 0 }}>
-            <TableContainer sx={{ maxHeight: 350, minHeight: 200 }}>
-              <Table size="small" stickyHeader sx={{ "& .MuiTableCell-stickyHeader": { backgroundColor: "#0d1321" } }}>
+            <TableContainer sx={{ maxHeight: { xs: 420, lg: 520 }, minHeight: { xs: 260, lg: 360 } }}>
+              <Table
+                size="small"
+                stickyHeader
+                sx={{
+                  "& .MuiTableCell-root": { py: 0.55, px: 0.8, borderBottom: "1px solid rgba(255,255,255,0.03)" },
+                  "& .MuiTableCell-stickyHeader": { backgroundColor: "#0d1321", py: 0.65 },
+                }}
+              >
                 <TableHead>
                   <TableRow>
                     <TableCell>รายการ</TableCell>
@@ -1076,8 +1059,8 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                               size="small"
                               label={o.source === "bot" ? "BOT" : "MANUAL"}
                               sx={{
-                                fontSize: "8px",
-                                height: "16px",
+                                fontSize: "7.5px",
+                                height: "14px",
                                 fontWeight: 700,
                                 backgroundColor: o.source === "bot" ? "rgba(0, 193, 106, 0.12)" : "rgba(59, 130, 246, 0.12)",
                                 color: o.source === "bot" ? "primary.main" : "#60a5fa",
@@ -1106,15 +1089,15 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                               disabled={cancellingId === o.id}
                               onClick={() => handleCancelOrder(o.id, o.symbol, o.side)}
                               sx={{
-                                fontSize: "0.75rem",
+                                fontSize: "0.7rem",
                                 color: "#ef5b63",
                                 borderColor: "rgba(239, 91, 99, 0.3)",
                                 py: 0.2,
                                 px: 1,
                                 borderRadius: "6px",
                                 textTransform: "none",
-                                minWidth: "58px",
-                                height: "24px",
+                                minWidth: "52px",
+                                height: "21px",
                                 display: "inline-flex",
                                 alignItems: "center",
                                 justifyContent: "center",
@@ -1147,14 +1130,21 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
 
         {/* Trade History Card */}
         <Card sx={{ background: "rgba(8, 12, 20, 0.72)", backdropFilter: "blur(24px)", border: "1px solid rgba(255, 255, 255, 0.04)", borderRadius: "20px" }}>
-          <Box sx={{ p: 2.5, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
-            <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
+          <Box sx={{ px: 2, py: 1.5, display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)" }}>
+            <Typography sx={{ fontWeight: 600, fontSize: "0.88rem", color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
               ⁙ ประวัติการเทรด (Trade History)
             </Typography>
           </Box>
           <CardContent sx={{ p: 0 }}>
-            <TableContainer sx={{ maxHeight: 350, minHeight: 200 }}>
-              <Table size="small" stickyHeader sx={{ "& .MuiTableCell-stickyHeader": { backgroundColor: "#0d1321" } }}>
+            <TableContainer sx={{ maxHeight: { xs: 420, lg: 520 }, minHeight: { xs: 260, lg: 360 } }}>
+              <Table
+                size="small"
+                stickyHeader
+                sx={{
+                  "& .MuiTableCell-root": { py: 0.55, px: 0.8, borderBottom: "1px solid rgba(255,255,255,0.03)" },
+                  "& .MuiTableCell-stickyHeader": { backgroundColor: "#0d1321", py: 0.65 },
+                }}
+              >
                 <TableHead>
                   <TableRow>
                     <TableCell>รายการ</TableCell>
@@ -1200,8 +1190,8 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                               size="small"
                               label={h.source === "bot" ? "BOT" : "MANUAL"}
                               sx={{
-                                fontSize: "8px",
-                                height: "16px",
+                                fontSize: "7.5px",
+                                height: "14px",
                                 fontWeight: 700,
                                 backgroundColor: h.source === "bot" ? "rgba(0, 193, 106, 0.12)" : "rgba(59, 130, 246, 0.12)",
                                 color: h.source === "bot" ? "primary.main" : "#60a5fa",

@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { Box, Button, Card, CardContent, Chip, CircularProgress, MenuItem, Paper, Select, Stack, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, TablePagination } from "@mui/material";
+import { Box, Button, Card, CardContent, Chip, CircularProgress, Paper, Stack, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, TablePagination } from "@mui/material";
 import { Bot, Brain, History, Inbox, TrendingUp } from "lucide-react";
 import type { AiWatchlistItem, BotConfig, HistoryItem, PositionItem } from "./dashboardTypes";
 
@@ -18,6 +18,22 @@ const strategyDisplayNames: Record<string, string> = {
   multi_indicator: "วิเคราะห์รอบด้าน (Balanced Signal)",
   aggressive_momentum: "เก็งกำไรเร็ว (Fast Breakout)",
 };
+
+type PnLDataPoint = {
+  pnl: number;
+  label: string;
+  time: string;
+  tradeNumber: number;
+};
+
+type PnLBarPoint = {
+  pnl: number;
+  startTrade: number;
+  endTrade: number;
+};
+
+const MAX_EQUITY_RENDER_POINTS = 280;
+const MAX_PNL_RENDER_BARS = 120;
 
 function parseHistoryDate(value: string) {
   if (!value) return null;
@@ -78,43 +94,106 @@ function filterHistoryByRange(history: HistoryItem[], range: TradeHistoryRange) 
   });
 }
 
-function PnLChart({ history }: { history: HistoryItem[] }) {
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+function downsampleEquityPoints(points: PnLDataPoint[], maxPoints = MAX_EQUITY_RENDER_POINTS) {
+  if (points.length <= maxPoints) return points;
 
-  const closed = [...history].reverse().filter((h) => h.pnl_thb !== null);
-  const isEmpty = closed.length === 0;
+  const first = points[0];
+  const last = points[points.length - 1];
+  const middle = points.slice(1, -1);
+  const bucketCount = Math.max(1, Math.floor((maxPoints - 2) / 2));
+  const bucketSize = Math.ceil(middle.length / bucketCount);
+  const sampled: PnLDataPoint[] = [first];
 
-  // Calculate cumulative points starting at 0
-  let cumulative = 0;
-  const dataPoints = [{ pnl: 0, label: "เริ่มต้น", time: "" }];
+  for (let start = 0; start < middle.length; start += bucketSize) {
+    const bucket = middle.slice(start, start + bucketSize);
+    let minPoint = bucket[0];
+    let maxPoint = bucket[0];
 
-  if (isEmpty) {
-    // Generate dummy flat points for visual structure
-    dataPoints.push({ pnl: 0, label: "ไม่มีข้อมูล", time: "" });
-    dataPoints.push({ pnl: 0, label: "ไม่มีข้อมูล", time: "" });
-  } else {
-    closed.forEach((t) => {
-      cumulative += t.pnl_thb || 0;
-      dataPoints.push({
-        pnl: cumulative,
-        label: `${t.symbol} (${t.pnl_thb && t.pnl_thb > 0 ? "+" : ""}${(t.pnl_percent || 0).toFixed(1)}%)`,
-        time: t.timestamp || ""
-      });
+    bucket.forEach((point) => {
+      if (point.pnl < minPoint.pnl) minPoint = point;
+      if (point.pnl > maxPoint.pnl) maxPoint = point;
+    });
+
+    if (minPoint.tradeNumber < maxPoint.tradeNumber) {
+      sampled.push(minPoint, maxPoint);
+    } else if (maxPoint.tradeNumber < minPoint.tradeNumber) {
+      sampled.push(maxPoint, minPoint);
+    } else {
+      sampled.push(minPoint);
+    }
+  }
+
+  if (sampled[sampled.length - 1] !== last) sampled.push(last);
+  return sampled;
+}
+
+function aggregatePnLBars(trades: HistoryItem[], maxBars = MAX_PNL_RENDER_BARS) {
+  if (trades.length <= maxBars) {
+    return trades.map((trade, index) => ({
+      pnl: trade.pnl_thb || 0,
+      startTrade: index + 1,
+      endTrade: index + 1,
+    }));
+  }
+
+  const bucketSize = Math.ceil(trades.length / maxBars);
+  const bars: PnLBarPoint[] = [];
+
+  for (let start = 0; start < trades.length; start += bucketSize) {
+    const bucket = trades.slice(start, start + bucketSize);
+    bars.push({
+      pnl: bucket.reduce((sum, trade) => sum + (trade.pnl_thb || 0), 0),
+      startTrade: start + 1,
+      endTrade: start + bucket.length,
     });
   }
 
+  return bars;
+}
+
+function PnLChart({ history }: { history: HistoryItem[] }) {
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+
+  const closed = useMemo(() => [...history].reverse().filter((h) => h.pnl_thb !== null), [history]);
+  const isEmpty = closed.length === 0;
+
+  const dataPoints = useMemo(() => {
+    let runningTotal = 0;
+    const points: PnLDataPoint[] = [{ pnl: 0, label: "เริ่มต้น", time: "", tradeNumber: 0 }];
+
+    if (closed.length === 0) {
+      points.push({ pnl: 0, label: "ไม่มีข้อมูล", time: "", tradeNumber: 1 });
+      points.push({ pnl: 0, label: "ไม่มีข้อมูล", time: "", tradeNumber: 2 });
+      return points;
+    }
+
+    closed.forEach((t, index) => {
+      runningTotal += t.pnl_thb || 0;
+      points.push({
+        pnl: runningTotal,
+        label: `${t.symbol} (${t.pnl_thb && t.pnl_thb > 0 ? "+" : ""}${(t.pnl_percent || 0).toFixed(1)}%)`,
+        time: t.timestamp || "",
+        tradeNumber: index + 1,
+      });
+    });
+
+    return points;
+  }, [closed]);
+
+  const displayPoints = useMemo(() => downsampleEquityPoints(dataPoints), [dataPoints]);
+  const barPoints = useMemo(() => aggregatePnLBars(closed), [closed]);
+  const cumulative = dataPoints[dataPoints.length - 1]?.pnl || 0;
   const pnls = dataPoints.map((d) => d.pnl);
   const maxVal = Math.max(...pnls);
-  
-  // Find maximum absolute individual trade PnL to scale the background bars
-  const maxSinglePnl = useMemo(() => {
-    if (isEmpty) return 10;
-    const values = closed.map(t => Math.abs(t.pnl_thb || 0));
-    const max = Math.max(...values);
-    return max === 0 ? 10 : max;
-  }, [closed, isEmpty]);
   const minVal = Math.min(...pnls);
   const valRange = maxVal === minVal ? 10 : maxVal - minVal;
+
+  const maxSinglePnl = useMemo(() => {
+    if (isEmpty) return 10;
+    const values = barPoints.map((t) => Math.abs(t.pnl || 0));
+    const max = Math.max(...values);
+    return max === 0 ? 10 : max;
+  }, [barPoints, isEmpty]);
 
   const width = 600;
   const height = 150;
@@ -122,22 +201,21 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
   const paddingY = 20;
   const chartWidth = width - paddingX * 2;
   const chartHeight = height - paddingY * 2;
+  const tradeCountForScale = Math.max(1, closed.length);
 
-  const points = dataPoints.map((d, i) => {
-    const x = paddingX + (i / (dataPoints.length - 1)) * chartWidth;
+  const points = displayPoints.map((d) => {
+    const x = paddingX + (d.tradeNumber / tradeCountForScale) * chartWidth;
     const y = paddingY + chartHeight - ((d.pnl - minVal) / valRange) * chartHeight;
-    return { x, y, pnl: d.pnl, label: d.label, time: d.time };
+    return { x, y, pnl: d.pnl, label: d.label, time: d.time, tradeNumber: d.tradeNumber };
   });
 
-  // Zero-line Y coordinate
   const zeroY = paddingY + chartHeight - ((0 - minVal) / valRange) * chartHeight;
   const hasZeroLine = zeroY >= paddingY && zeroY <= (paddingY + chartHeight);
 
-  // SVG Path strings
   let linePath = "";
   let areaPath = "";
   if (points.length > 0) {
-    linePath = `M ${points[0].x} ${points[0].y} ` + points.slice(1).map(p => `L ${p.x} ${p.y}`).join(" ");
+    linePath = `M ${points[0].x} ${points[0].y} ` + points.slice(1).map((p) => `L ${p.x} ${p.y}`).join(" ");
     areaPath = linePath + ` L ${points[points.length - 1].x} ${paddingY + chartHeight} L ${points[0].x} ${paddingY + chartHeight} Z`;
   }
 
@@ -168,12 +246,10 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
             </linearGradient>
           </defs>
 
-          {/* Grid lines */}
           <line x1={paddingX} y1={paddingY} x2={width - paddingX} y2={paddingY} stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
           <line x1={paddingX} y1={paddingY + chartHeight / 2} x2={width - paddingX} y2={paddingY + chartHeight / 2} stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
           <line x1={paddingX} y1={paddingY + chartHeight} x2={width - paddingX} y2={paddingY + chartHeight} stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
 
-          {/* Zero profit baseline */}
           {hasZeroLine && (
             <line
               x1={paddingX}
@@ -186,12 +262,12 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
             />
           )}
 
-          {/* Faint PnL Bar Chart in background */}
-          {!isEmpty && closed.map((t, idx) => {
-            const pnlVal = t.pnl_thb || 0;
-            const barHeight = (Math.abs(pnlVal) / maxSinglePnl) * (chartHeight * 0.35); // scale to max 35% of chart height
-            const x = paddingX + ((idx + 1) / (dataPoints.length - 1)) * chartWidth;
-            const barWidth = Math.max(4, Math.min(16, (chartWidth / (dataPoints.length - 1)) * 0.5));
+          {!isEmpty && barPoints.map((t, idx) => {
+            const pnlVal = t.pnl || 0;
+            const barHeight = (Math.abs(pnlVal) / maxSinglePnl) * (chartHeight * 0.35);
+            const midpointTrade = (t.startTrade + t.endTrade) / 2;
+            const x = paddingX + (midpointTrade / tradeCountForScale) * chartWidth;
+            const barWidth = Math.max(2, Math.min(16, (chartWidth / barPoints.length) * 0.55));
             const barX = x - barWidth / 2;
             const isProfit = pnlVal > 0;
             const barY = isProfit ? zeroY - barHeight : zeroY;
@@ -211,10 +287,8 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
             );
           })}
 
-          {/* Area under the line */}
           {areaPath && <path d={areaPath} fill={`url(#${gradientId})`} />}
 
-          {/* Main line */}
           {linePath && (
             <path
               d={linePath}
@@ -226,29 +300,37 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
             />
           )}
 
-          {/* Interactive dots */}
           {!isEmpty && points.map((p, i) => {
             const isHovered = hoveredIndex === i;
+            const showDot = points.length <= 90 || isHovered || i === 0 || i === points.length - 1;
             return (
-              <g key={i}>
+              <g key={`${p.tradeNumber}-${i}`}>
                 <circle
                   cx={p.x}
                   cy={p.y}
-                  r={isHovered ? 6 : 4}
-                  fill={isHovered ? strokeColor : "#0d1321"}
-                  stroke={strokeColor}
-                  strokeWidth="2"
+                  r={points.length > 90 ? 8 : 7}
+                  fill="transparent"
                   style={{ cursor: "pointer" }}
                   onMouseEnter={() => setHoveredIndex(i)}
                   onMouseLeave={() => setHoveredIndex(null)}
                 />
+                {showDot && (
+                  <circle
+                    cx={p.x}
+                    cy={p.y}
+                    r={isHovered ? 6 : 3.6}
+                    fill={isHovered ? strokeColor : "#0d1321"}
+                    stroke={strokeColor}
+                    strokeWidth="2"
+                    style={{ pointerEvents: "none" }}
+                  />
+                )}
               </g>
             );
           })}
         </svg>
       </Box>
 
-      {/* Empty State Overlay */}
       {isEmpty && (
         <Box sx={{
           position: "absolute",
@@ -267,7 +349,6 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
         </Box>
       )}
 
-      {/* Tooltip Overlay */}
       {!isEmpty && hoveredIndex !== null && points[hoveredIndex] && (
         <Paper sx={{
           position: "absolute",
@@ -283,7 +364,7 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
           pointerEvents: "none"
         }}>
           <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 500 }}>
-            {hoveredIndex === 0 ? "จุดเริ่มต้น" : `ไม้ที่ ${hoveredIndex}: ${points[hoveredIndex].label}`}
+            {points[hoveredIndex].tradeNumber === 0 ? "จุดเริ่มต้น" : `ไม้ที่ ${points[hoveredIndex].tradeNumber}: ${points[hoveredIndex].label}`}
           </Typography>
           <Typography sx={{
             fontSize: "0.88rem",
@@ -304,7 +385,6 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
     </Paper>
   );
 }
-
 interface BotTradeViewProps {
   botConfig: BotConfig;
   positions: PositionItem[];
@@ -312,7 +392,7 @@ interface BotTradeViewProps {
   aiWatchlist: AiWatchlistItem[];
   handleBotToggle: () => void;
   handleOpenConfirmPanic: (symbol: string) => void;
-  setActiveView?: (view: any) => void;
+  setActiveView?: (view: "settings") => void;
   dataLoading?: boolean;
 }
 
@@ -357,7 +437,7 @@ export function BotTradeView({ botConfig, positions, history, aiWatchlist, handl
   const strategyDisplayName = strategyDisplayNames[botConfig.strategy] || botConfig.strategy?.replace(/_/g, " ") || "multi indicator";
   const operationStats = [
     { label: "Strategy", value: strategyDisplayName, color: "text.primary" },
-    { label: "AI Review", value: botConfig.ai_enabled ? "Gemini On" : "Off", color: botConfig.ai_enabled ? "#60a5fa" : "text.secondary" },
+    { label: "AI Review", value: botConfig.ai_enabled ? "AI On" : "Off", color: botConfig.ai_enabled ? "#60a5fa" : "text.secondary" },
     { label: "Stake", value: `${botConfig.stake_amount_thb} THB`, color: "text.primary" },
     { label: "Max Trades", value: `${positions.length} / ${maxTrades}`, color: positions.length >= maxTrades ? "#fbbf24" : "text.primary" },
     { label: "TP / SL", value: `+${botConfig.take_profit_pct}% / ${botConfig.stop_loss_pct}%`, color: "text.primary" },
@@ -586,7 +666,7 @@ export function BotTradeView({ botConfig, positions, history, aiWatchlist, handl
                   AI Watchlist
                 </Typography>
                 <Typography sx={{ color: "text.secondary", fontSize: "0.76rem", mt: 0.35 }}>
-                  สัญญาณที่ Gemini วิเคราะห์ไว้ก่อนตัดสินใจซื้อ
+                  สัญญาณที่ AI วิเคราะห์ไว้ก่อนตัดสินใจซื้อ
                 </Typography>
               </Box>
               <Brain size={18} style={{ color: "#60a5fa" }} />

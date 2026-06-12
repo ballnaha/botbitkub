@@ -71,6 +71,19 @@ export function LogsView({ botLogs, botLogsRef, clearDevLogs, devLogs, devLogsRe
                   lineHeight: 1.6,
                   color: "text.primary",
                   backgroundColor: "rgba(8, 12, 20, 0.95)",
+                  "& .developer-log-entry": {
+                    display: "block",
+                    py: 0.5,
+                  },
+                  "& .developer-log-time": {
+                    display: "inline",
+                    color: "#64748b",
+                    lineHeight: 1.4,
+                  },
+                  "& .developer-log-message": {
+                    display: "inline",
+                    lineHeight: 1.6,
+                  },
                 }}
                 dangerouslySetInnerHTML={{ __html: devLogs.join("") }}
               />

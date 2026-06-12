@@ -252,7 +252,7 @@ export default function DashboardPageClient() {
   const [tradePrice, setTradePrice] = useState("");
   const [positions, setPositions] = useState<PositionItem[]>([]);
   const selectedStreamSymbols = useMemo(() => {
-    if (activeView === "settings") return [];
+    if (activeView === "settings" || activeView === "wallet") return [];
 
     return Array.from(new Set([
       ...(activeView === "manual" && tradeSymbol ? [tradeSymbol] : []),
@@ -280,7 +280,7 @@ export default function DashboardPageClient() {
     });
   }, []);
   const { isConnected: wsConnected } = useBitkubWebSocket(handleTickerUpdate, selectedStreamSymbols, {
-    enabled: activeView !== "settings",
+    enabled: activeView !== "settings" && activeView !== "wallet",
     includeBaseSymbols: activeView === "manual",
   });
   const deferredTickers = useDeferredValue(tickers);
@@ -300,16 +300,13 @@ export default function DashboardPageClient() {
     return activeTickers.filter(([symbol]) => symbol.toUpperCase().includes(query));
   }, [activeTickers, marketSearch]);
 
-  const botLockedThb = useMemo(() => {
+  const investedThb = useMemo(() => {
     return balances.reduce((sum, item) => {
-      const lockedAmt = item.locked_by_bot ?? 0;
-      if (lockedAmt <= 0) return sum;
-
-      if (item.asset === "THB") return sum + lockedAmt;
+      if (item.asset === "THB") return sum;
 
       const ticker = tickers[`${item.asset}/THB`];
       const price = ticker?.last || ticker?.bid || 0;
-      const value = lockedAmt * price;
+      const value = item.total * price;
 
       const flooredValue = Math.floor(Math.max(0, value) * 100) / 100;
       return sum + flooredValue;
@@ -405,7 +402,7 @@ export default function DashboardPageClient() {
     if (type === "success") styleClass = "text-emerald-400";
     if (type === "error") styleClass = "text-rose-400";
 
-    const entry = `<span class="text-slate-500">[${ts}]</span> <span class="${styleClass}">${msg}</span>`;
+    const entry = `<div class="developer-log-entry"><span class="developer-log-time text-slate-500">[${ts}]</span> <span class="developer-log-message ${styleClass}">${msg}</span></div>`;
     setDevLogs((prev) => {
       const updated = [...prev, entry];
       return updated.slice(-50); // Keep last 50
@@ -666,7 +663,7 @@ export default function DashboardPageClient() {
         initialRequests.push(fetchBotPositions(), fetchBotHistory(), fetchAiWatchlist(), fetchBotLogs());
       }
 
-      if (activeView === "manual" || activeView === "settings") {
+      if (activeView === "manual" || activeView === "wallet" || activeView === "settings") {
         initialRequests.push(fetchTickers());
       }
 
@@ -695,6 +692,10 @@ export default function DashboardPageClient() {
     } else if (activeView === "manual") {
       intervals.push(setInterval(fetchConnectionStatus, 10000));
       intervals.push(setInterval(fetchBalances, 15000));
+    } else if (activeView === "wallet") {
+      intervals.push(setInterval(fetchConnectionStatus, 10000));
+      intervals.push(setInterval(fetchBalances, 15000));
+      intervals.push(setInterval(fetchTickers, 15000));
     } else {
       intervals.push(setInterval(() => {
         fetchConnectionStatus();
@@ -1537,7 +1538,7 @@ export default function DashboardPageClient() {
                   </Typography>
                   <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75, mt: 0.5 }}>
                     <Typography variant="h5" sx={{ fontSize: { xs: "1.12rem", sm: "1.32rem" }, fontWeight: 600, color: "primary.main", fontFamily: "monospace", textShadow: "0 0 11px rgba(0, 193, 106, 0.2)" }}>
-                      {botLockedThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      {investedThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </Typography>
                     <Typography component="span" sx={{ fontSize: "0.74rem", color: "text.secondary", fontWeight: 500 }}>
                       THB โดยประมาณ
@@ -1720,6 +1721,8 @@ export default function DashboardPageClient() {
 
         {activeView === "wallet" && (
           <WalletView
+            dashboardInvestedThb={investedThb}
+            dashboardTotalThb={totalThb}
             setActiveView={setActiveView}
           />
         )}

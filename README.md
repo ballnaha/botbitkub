@@ -1,6 +1,6 @@
 # Bitkub Mini Bot - คู่มือการใช้งานและการตั้งค่า `.env`
 
-บอทเทรด Bitkub อัตโนมัติ (Bitkub Mini Bot) มาพร้อมกับระบบสแกนสัญญาณเทคนิคัล และระบบกรองสัญญาณด้วย AI (Gemini AI Review)
+บอทเทรด Bitkub อัตโนมัติ (Bitkub Mini Bot) มาพร้อมกับระบบสแกนสัญญาณเทคนิคัล และระบบกรองสัญญาณด้วย AI Review (ปัจจุบันรองรับ Gemini)
 
 ---
 
@@ -32,7 +32,7 @@ BITKUB_OWNER_NAME=ชื่อของคุณ
 DASHBOARD_USERNAME=admin
 DASHBOARD_PASSWORD=กำหนดรหัสผ่านของคุณเองที่นี่
 
-# API Key ของ Gemini สำหรับให้ AI ช่วยกรองสัญญาณซื้อขาย (หากใช้ฟีเจอร์ AI Review)
+# API Key ของผู้ให้บริการ AI ที่ระบบรองรับปัจจุบัน (Gemini) สำหรับให้ AI ช่วยกรองสัญญาณซื้อขาย
 GEMINI_API_KEY=ใส่_GEMINI_API_KEY_ที่นี่
 
 # การตั้งค่าพอร์ตและโฮสต์ (ปกติใช้ค่าเริ่มต้นได้เลย)
@@ -51,7 +51,7 @@ PORT=8282
 | `BITKUB_OWNER_NAME` | ชื่อของคุณ เพื่อแสดงความยินดีต้อนรับที่มุมบนของ Dashboard (เช่น `BITKUB_OWNER_NAME=Thanya`) |
 | `DASHBOARD_USERNAME` | ชื่อผู้ใช้สำหรับ Login เข้าหน้า Dashboard (ค่าเริ่มต้นคือ `admin`) |
 | `DASHBOARD_PASSWORD` | รหัสผ่านสำหรับ Login (แนะนำให้เปลี่ยนเพื่อความปลอดภัย โดยเฉพาะเวลาเอาไปรันบน VPS) |
-| `GEMINI_API_KEY` | **API Key ของ Google Gemini** เพื่อใช้ฟีเจอร์ AI Review กรองสัญญาณซื้อขาย |
+| `GEMINI_API_KEY` | **API Key ของ Gemini** เพื่อใช้ฟีเจอร์ AI Review กรองสัญญาณซื้อขาย (ถ้าจะใช้ผู้ให้บริการ AI อื่น ต้องเพิ่ม adapter ในโค้ดก่อน) |
 | `HOST` | IP Address สำหรับรัน Backend (ค่าเริ่มต้น `127.0.0.1` สำหรับรันบนเครื่องตัวเอง) |
 | `PORT` | Port ที่ Backend ใช้รัน (ค่าเริ่มต้นคือ `8282`) |
 

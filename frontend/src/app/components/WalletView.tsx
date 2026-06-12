@@ -12,6 +12,7 @@ import {
   TableRow,
   TableCell,
   TableBody,
+  TablePagination,
   CircularProgress,
   IconButton,
   Button,
@@ -36,7 +37,10 @@ interface AssetInfo {
   available: number;
   reserved: number;
   total: number;
+  bot_amount?: number;
+  free_for_manual?: number;
   value_thb: number;
+  bot_value_thb?: number;
   current_price: number;
   avg_entry_price: number | null;
   pnl_percent: number;
@@ -53,6 +57,8 @@ interface WalletSummary {
 }
 
 interface WalletViewProps {
+  dashboardInvestedThb?: number;
+  dashboardTotalThb?: number;
   setActiveView?: (view: any) => void;
 }
 
@@ -81,12 +87,14 @@ const getCurrencyColor = (symbol: string): string => {
   return `hsl(${hue}, 70%, 55%)`;
 };
 
-export function WalletView({ setActiveView }: WalletViewProps) {
+export function WalletView({ dashboardInvestedThb, dashboardTotalThb, setActiveView }: WalletViewProps) {
   const [data, setData] = useState<WalletSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [hideSmall, setHideSmall] = useState(true);
+  const [assetPage, setAssetPage] = useState(0);
+  const [assetRowsPerPage, setAssetRowsPerPage] = useState(10);
   const [showBalances, setShowBalances] = useState(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("wallet_show_balances");
@@ -190,10 +198,19 @@ export function WalletView({ setActiveView }: WalletViewProps) {
     assets,
   } = data;
 
+  const displayTotalBalanceThb = typeof dashboardTotalThb === "number" ? dashboardTotalThb : total_balance_thb;
+  const displayInvestedThb = typeof dashboardInvestedThb === "number" ? dashboardInvestedThb : total_invested_thb;
+
 
 
   // Filter out microscopic assets for allocation bar
-  const allocationAssets = assets.filter(a => a.value_thb > 0);
+  const allocationAssets = assets.filter(a => {
+    if (a.value_thb <= 0) return false;
+    if (hideSmall && a.currency !== "THB") {
+      return a.value_thb >= 1.0;
+    }
+    return true;
+  });
   const totalAllocated = allocationAssets.reduce((sum, a) => sum + a.value_thb, 0);
 
   const filteredAssets = assets.filter(a => {
@@ -202,6 +219,12 @@ export function WalletView({ setActiveView }: WalletViewProps) {
     }
     return true;
   });
+  const assetPageCount = Math.max(1, Math.ceil(filteredAssets.length / assetRowsPerPage));
+  const safeAssetPage = Math.min(assetPage, assetPageCount - 1);
+  const paginatedAssets = filteredAssets.slice(
+    safeAssetPage * assetRowsPerPage,
+    safeAssetPage * assetRowsPerPage + assetRowsPerPage
+  );
 
   return (
     <Box sx={{ width: "100%", maxWidth: 1180, mx: "auto", mt: { xs: 1, sm: 1.5 }, display: "flex", flexDirection: "column", gap: { xs: 2, md: 3 } }}>
@@ -260,25 +283,24 @@ export function WalletView({ setActiveView }: WalletViewProps) {
                   </IconButton>
                 </Tooltip>
               </Box>
-              <Box sx={{ display: "flex", alignItems: "baseline", gap: 1, mt: 1 }}>
+              <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75, mt: 1 }}>
                 <Typography
                   sx={{
-                    fontSize: { xs: "2rem", sm: "2.4rem" },
+                    fontSize: { xs: "2rem", sm: "2.45rem", md: "2.65rem" },
                     fontWeight: 800,
-                    fontFamily: "Outfit, sans-serif",
+                    fontFamily: "monospace",
                     color: "text.primary",
-                    lineHeight: 1,
-                    letterSpacing: "-0.02em",
-                    textShadow: "0 0 20px rgba(0, 193, 106, 0.15)"
+                    lineHeight: 1.05,
+                    textShadow: "0 0 18px rgba(255, 255, 255, 0.18)"
                   }}
                 >
                   {showBalances 
-                    ? `฿${total_balance_thb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                    : "฿ ••••••••"
+                    ? displayTotalBalanceThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                    : "••••••••"
                   }
                 </Typography>
-                <Typography component="span" sx={{ fontSize: "0.9rem", color: "text.secondary", fontWeight: 700 }}>
-                  THB
+                <Typography component="span" sx={{ fontSize: { xs: "0.78rem", sm: "0.88rem" }, color: "text.secondary", fontWeight: 600 }}>
+                  THB โดยประมาณ
                 </Typography>
               </Box>
               
@@ -336,14 +358,19 @@ export function WalletView({ setActiveView }: WalletViewProps) {
                   <Typography sx={{ color: "text.secondary", fontSize: "0.68rem", textTransform: "uppercase", fontWeight: 600 }}>
                     เงินสดพร้อมใช้งาน (Cash)
                   </Typography>
-                  <Typography sx={{ fontSize: "1.05rem", fontWeight: 800, fontFamily: "monospace", color: "#00c16a", mt: 0.5 }}>
-                    {showBalances 
-                      ? `฿${(assets.find(a => a.currency === "THB")?.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                      : "฿ ••••••"
-                    }
-                  </Typography>
+                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75, mt: 0.5 }}>
+                    <Typography sx={{ fontSize: { xs: "1.42rem", sm: "1.32rem" }, fontWeight: 700, fontFamily: "monospace", color: "text.primary", textShadow: "0 0 12px rgba(255, 255, 255, 0.15)" }}>
+                      {showBalances
+                        ? (assets.find(a => a.currency === "THB")?.total || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        : "••••••"
+                      }
+                    </Typography>
+                    <Typography component="span" sx={{ fontSize: "0.78rem", color: "text.secondary", fontWeight: 500 }}>
+                      THB
+                    </Typography>
+                  </Box>
                   <Typography sx={{ fontSize: "0.68rem", color: "text.secondary", mt: 0.25 }}>
-                    สัดส่วน: {(((assets.find(a => a.currency === "THB")?.total || 0) / (total_balance_thb || 1)) * 100).toFixed(1)}%
+                    สัดส่วน: {(((assets.find(a => a.currency === "THB")?.total || 0) / (displayTotalBalanceThb || 1)) * 100).toFixed(1)}%
                   </Typography>
                 </Box>
 
@@ -352,14 +379,19 @@ export function WalletView({ setActiveView }: WalletViewProps) {
                   <Typography sx={{ color: "text.secondary", fontSize: "0.68rem", textTransform: "uppercase", fontWeight: 600 }}>
                     เงินที่ลงทุนอยู่ (Invested)
                   </Typography>
-                  <Typography sx={{ fontSize: "1.05rem", fontWeight: 800, fontFamily: "monospace", color: "text.primary", mt: 0.5 }}>
-                    {showBalances 
-                      ? `฿${total_invested_thb.toLocaleString(undefined, { minimumFractionDigits: 2 })}`
-                      : "฿ ••••••"
-                    }
-                  </Typography>
+                  <Box sx={{ display: "flex", alignItems: "baseline", gap: 0.75, mt: 0.5 }}>
+                    <Typography sx={{ fontSize: { xs: "1.42rem", sm: "1.32rem" }, fontWeight: 700, fontFamily: "monospace", color: "text.primary", textShadow: "0 0 12px rgba(255, 255, 255, 0.15)" }}>
+                      {showBalances
+                        ? displayInvestedThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                        : "••••••"
+                      }
+                    </Typography>
+                    <Typography component="span" sx={{ fontSize: "0.78rem", color: "text.secondary", fontWeight: 500 }}>
+                      THB
+                    </Typography>
+                  </Box>
                   <Typography sx={{ fontSize: "0.68rem", color: "text.secondary", mt: 0.25 }}>
-                    สัดส่วน: {((total_invested_thb / (total_balance_thb || 1)) * 100).toFixed(1)}%
+                    สัดส่วน: {((displayInvestedThb / (displayTotalBalanceThb || 1)) * 100).toFixed(1)}%
                   </Typography>
                 </Box>
               </Box>
@@ -437,8 +469,8 @@ export function WalletView({ setActiveView }: WalletViewProps) {
 
       {/* Asset Table / Cards List */}
       <Card>
-        <CardContent sx={{ p: { xs: 2, sm: 2.5 } }}>
-          <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, justifyContent: "space-between", alignItems: { xs: "flex-start", sm: "center" }, borderBottom: "1px solid rgba(255,255,255,0.05)", pb: 2, mb: 1.5, gap: 1 }}>
+        <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+          <Box sx={{ display: "flex", flexDirection: { xs: "column", sm: "row" }, justifyContent: "space-between", alignItems: { xs: "flex-start", sm: "center" }, borderBottom: "1px solid rgba(255,255,255,0.05)", pb: 1.5, mb: 1, gap: 1 }}>
             <Box>
               <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", color: "text.primary" }}>
                 รายการสินทรัพย์ทั้งหมด (Assets List)
@@ -451,7 +483,10 @@ export function WalletView({ setActiveView }: WalletViewProps) {
               control={
                 <Checkbox
                   checked={hideSmall}
-                  onChange={(e) => setHideSmall(e.target.checked)}
+                  onChange={(e) => {
+                    setHideSmall(e.target.checked);
+                    setAssetPage(0);
+                  }}
                   size="small"
                   sx={{
                     color: "rgba(255,255,255,0.2)",
@@ -473,7 +508,7 @@ export function WalletView({ setActiveView }: WalletViewProps) {
           {/* DESKTOP VIEW: Clean Table */}
           <Box sx={{ display: { xs: "none", sm: "block" } }}>
             <TableContainer>
-              <Table size="small">
+              <Table size="small" sx={{ "& .MuiTableCell-root": { py: 0.6, px: 1, borderBottom: "1px solid rgba(255,255,255,0.03)" } }}>
                 <TableHead>
                   <TableRow>
                     <TableCell sx={{ pl: 0, fontWeight: 600 }}>สินทรัพย์</TableCell>
@@ -481,49 +516,59 @@ export function WalletView({ setActiveView }: WalletViewProps) {
                     <TableCell align="right" sx={{ fontWeight: 600 }}>ราคาปัจจุบัน</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 600 }}>มูลค่าปัจจุบัน (THB)</TableCell>
                     <TableCell align="right" sx={{ fontWeight: 600 }}>ทุนเฉลี่ย (THB)</TableCell>
-                    <TableCell align="right" sx={{ pr: 0, fontWeight: 600 }}>กำไร / ขาดทุน</TableCell>
+                    <TableCell align="right" sx={{ pr: 0, fontWeight: 600 }}>PnL บอท</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {filteredAssets.map((asset) => {
+                  {paginatedAssets.map((asset) => {
                     const hasPosition = asset.avg_entry_price !== null && asset.currency !== "THB";
                     const isAssetProfit = asset.pnl_thb >= 0;
                     const assetPnlColor = isAssetProfit ? "#00c16a" : "#ef5b63";
+                    const botAmount = asset.bot_amount ?? 0;
+                    const freeForManual = asset.free_for_manual ?? asset.available;
+                    const botValueThb = asset.bot_value_thb ?? 0;
+                    const showSplit = asset.currency !== "THB" && (botAmount > 0 || freeForManual > 0);
 
                     return (
                       <TableRow key={asset.currency} sx={{ "&:last-child td": { borderBottom: 0 } }}>
                         <TableCell sx={{ pl: 0 }}>
-                          <Box sx={{ display: "flex", alignItems: "center", gap: 1.25 }}>
-                            <Box
-                              sx={{
-                                width: 26,
-                                height: 26,
-                                borderRadius: "50%",
-                                backgroundColor: `${getCurrencyColor(asset.currency)}15`,
-                                border: `1px solid ${getCurrencyColor(asset.currency)}26`,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                fontWeight: 700,
-                                fontSize: "0.68rem",
-                                color: getCurrencyColor(asset.currency)
-                              }}
-                            >
-                              {asset.currency.substring(0, 2)}
-                            </Box>
+                          <Box sx={{ display: "flex", alignItems: "center" }}>
                             <Typography sx={{ fontWeight: 700, fontSize: "0.85rem" }}>
                               {asset.currency}
                             </Typography>
                           </Box>
                         </TableCell>
-                        <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.82rem" }}>
-                          {showBalances ? asset.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 }) : "••••••"}
+                        <TableCell align="right">
+                          <Typography sx={{ fontFamily: "monospace", fontSize: "0.82rem", fontWeight: 600 }}>
+                            {showBalances ? asset.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 8 }) : "••••••"}
+                          </Typography>
+                          {showBalances && showSplit && (
+                            <Box sx={{ mt: 0.25, display: "flex", flexDirection: "column", gap: 0.1 }}>
+                              {botAmount > 0 && (
+                                <Typography sx={{ fontFamily: "monospace", fontSize: "0.66rem", color: "#00c16a", lineHeight: 1.2 }}>
+                                  บอท: {botAmount.toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                                </Typography>
+                              )}
+                              {freeForManual > 0 && (
+                                <Typography sx={{ fontFamily: "monospace", fontSize: "0.66rem", color: "text.secondary", lineHeight: 1.2 }}>
+                                  พร้อมใช้: {freeForManual.toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                                </Typography>
+                              )}
+                            </Box>
+                          )}
                         </TableCell>
                         <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.82rem", color: "text.secondary" }}>
                           {asset.currency === "THB" ? "1.00" : (showBalances ? asset.current_price.toLocaleString(undefined, { minimumFractionDigits: 2 }) : "••••••")}
                         </TableCell>
-                        <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.85rem", fontWeight: 600 }}>
-                          ฿{showBalances ? asset.value_thb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "••••••"}
+                        <TableCell align="right">
+                          <Typography sx={{ fontFamily: "monospace", fontSize: "0.85rem", fontWeight: 600 }}>
+                            ฿{showBalances ? asset.value_thb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "••••••"}
+                          </Typography>
+                          {showBalances && botValueThb > 0 && (
+                            <Typography sx={{ fontFamily: "monospace", fontSize: "0.66rem", color: "#00c16a", lineHeight: 1.2 }}>
+                              บอท: ฿{botValueThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell align="right" sx={{ fontFamily: "monospace", fontSize: "0.82rem", color: "text.secondary" }}>
                           {hasPosition ? (showBalances ? `฿${asset.avg_entry_price?.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "••••••") : "-"}
@@ -535,7 +580,7 @@ export function WalletView({ setActiveView }: WalletViewProps) {
                                 {isAssetProfit ? "+" : ""}{asset.pnl_percent.toFixed(2)}%
                               </Typography>
                               <Typography sx={{ color: "text.secondary", fontSize: "0.68rem", fontFamily: "monospace" }}>
-                                {showBalances ? `${isAssetProfit ? "+" : ""}${asset.pnl_thb.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "••••••"}
+                                {showBalances ? `${isAssetProfit ? "+" : ""}${asset.pnl_thb.toLocaleString(undefined, { minimumFractionDigits: 2 })} THB` : "••••••"}
                               </Typography>
                             </Box>
                           ) : (
@@ -551,47 +596,33 @@ export function WalletView({ setActiveView }: WalletViewProps) {
           </Box>
 
           {/* MOBILE VIEW: Card Stack (No horizontal scrolling) */}
-          <Box sx={{ display: { xs: "flex", sm: "none" }, flexDirection: "column", gap: 1.5 }}>
-            {filteredAssets.map((asset) => {
+          <Box sx={{ display: { xs: "flex", sm: "none" }, flexDirection: "column", gap: 1 }}>
+            {paginatedAssets.map((asset) => {
               const hasPosition = asset.avg_entry_price !== null && asset.currency !== "THB";
               const isAssetProfit = asset.pnl_thb >= 0;
               const assetPnlColor = isAssetProfit ? "#00c16a" : "#ef5b63";
-              const coinColor = getCurrencyColor(asset.currency);
+              const botAmount = asset.bot_amount ?? 0;
+              const freeForManual = asset.free_for_manual ?? asset.available;
+              const botValueThb = asset.bot_value_thb ?? 0;
+              const showSplit = asset.currency !== "THB" && (botAmount > 0 || freeForManual > 0);
 
               return (
                 <Paper
                   key={asset.currency}
                   elevation={0}
                   sx={{
-                    p: 2,
+                    p: 1.25,
                     borderRadius: "12px",
                     backgroundColor: "rgba(255,255,255,0.02)",
                     border: "1px solid rgba(255,255,255,0.05)",
                     display: "flex",
                     flexDirection: "column",
-                    gap: 1.5
+                    gap: 1
                   }}
                 >
                   {/* Top line: Icon, Symbol, and current PnL badge */}
                   <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-                      <Box
-                        sx={{
-                          width: 28,
-                          height: 28,
-                          borderRadius: "50%",
-                          backgroundColor: `${coinColor}15`,
-                          border: `1px solid ${coinColor}26`,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontWeight: 800,
-                          fontSize: "0.72rem",
-                          color: coinColor
-                        }}
-                      >
-                        {asset.currency.substring(0, 2)}
-                      </Box>
+                    <Box sx={{ display: "flex", alignItems: "center" }}>
                       <Typography sx={{ fontWeight: 800, fontSize: "0.9rem" }}>
                         {asset.currency}
                       </Typography>
@@ -635,6 +666,20 @@ export function WalletView({ setActiveView }: WalletViewProps) {
                       <Typography sx={{ fontFamily: "monospace", fontSize: "0.85rem", fontWeight: 600, mt: 0.35 }}>
                         {showBalances ? asset.total.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 6 }) : "••••••"}
                       </Typography>
+                      {showBalances && showSplit && (
+                        <Box sx={{ mt: 0.35, display: "grid", gap: 0.15 }}>
+                          {botAmount > 0 && (
+                            <Typography sx={{ fontFamily: "monospace", fontSize: "0.68rem", color: "#00c16a" }}>
+                              บอทดูแล: {botAmount.toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                            </Typography>
+                          )}
+                          {freeForManual > 0 && (
+                            <Typography sx={{ fontFamily: "monospace", fontSize: "0.68rem", color: "text.secondary" }}>
+                              พร้อมใช้: {freeForManual.toLocaleString(undefined, { maximumFractionDigits: 8 })}
+                            </Typography>
+                          )}
+                        </Box>
+                      )}
                     </Box>
 
                     <Box sx={{ textAlign: "right" }}>
@@ -644,6 +689,11 @@ export function WalletView({ setActiveView }: WalletViewProps) {
                       <Typography sx={{ fontFamily: "monospace", fontSize: "0.95rem", fontWeight: 700, color: "text.primary", mt: 0.35 }}>
                         {showBalances ? `฿${asset.value_thb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "฿ ••••••"}
                       </Typography>
+                      {showBalances && botValueThb > 0 && (
+                        <Typography sx={{ fontFamily: "monospace", fontSize: "0.68rem", color: "#00c16a", mt: 0.35 }}>
+                          บอท: ฿{botValueThb.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </Typography>
+                      )}
                     </Box>
                   </Box>
 
@@ -667,7 +717,7 @@ export function WalletView({ setActiveView }: WalletViewProps) {
                         </Box>
 
                         <Box sx={{ display: "flex", gap: 0.5, alignItems: "center" }}>
-                          <Typography sx={{ color: "text.secondary" }}>PnL (บาท):</Typography>
+                          <Typography sx={{ color: "text.secondary" }}>PnL บอท:</Typography>
                           <Typography sx={{ fontFamily: "monospace", color: assetPnlColor, fontWeight: 700 }}>
                             {showBalances ? `${isAssetProfit ? "+" : ""}${asset.pnl_thb.toLocaleString(undefined, { minimumFractionDigits: 2 })}` : "••••••"}
                           </Typography>
@@ -679,6 +729,29 @@ export function WalletView({ setActiveView }: WalletViewProps) {
               );
             })}
           </Box>
+
+          <TablePagination
+            rowsPerPageOptions={[5, 10, 25, 50]}
+            component="div"
+            count={filteredAssets.length}
+            rowsPerPage={assetRowsPerPage}
+            page={safeAssetPage}
+            onPageChange={(_, nextPage) => setAssetPage(nextPage)}
+            onRowsPerPageChange={(event) => {
+              setAssetRowsPerPage(Number(event.target.value));
+              setAssetPage(0);
+            }}
+            sx={{
+              color: "text.secondary",
+              borderTop: "1px solid rgba(255,255,255,0.05)",
+              "& .MuiTablePagination-selectIcon": {
+                color: "text.secondary",
+              },
+              "& .MuiIconButton-root": {
+                color: "text.secondary",
+              },
+            }}
+          />
         </CardContent>
       </Card>
 

@@ -3,6 +3,7 @@ import time
 import hmac
 import hashlib
 import json
+import math
 import requests
 import asyncio
 from fastapi import FastAPI, HTTPException, Depends, status, Request, Response
@@ -763,9 +764,13 @@ async def get_bot_wallet_summary():
             return float(ticker_data[bitkub_symbol].get("last", 0.0))
         return 0.0
 
+    def floor_thb(value):
+        return math.floor(max(0.0, float(value)) * 100) / 100
+
     assets = []
     total_balance_thb = 0.0
     total_invested_thb = 0.0
+    total_cost_basis_thb = 0.0
 
     if dry_run:
         # Dry-run wallet simulation
@@ -784,7 +789,10 @@ async def get_bot_wallet_summary():
             "available": available_thb,
             "reserved": 0.0,
             "total": available_thb,
+            "bot_amount": 0.0,
+            "free_for_manual": available_thb,
             "value_thb": available_thb,
+            "bot_value_thb": 0.0,
             "current_price": 1.0,
             "avg_entry_price": 1.0,
             "pnl_percent": 0.0,
@@ -801,21 +809,25 @@ async def get_bot_wallet_summary():
             
             pnl_percent = ((current_price - buy_price) / buy_price) * 100
             pnl_thb = (amount * current_price * 0.9975) - (amount * buy_price)
-            value_thb = amount * current_price
+            value_thb = floor_thb(amount * current_price)
             
             assets.append({
                 "currency": base_coin,
                 "available": amount,
                 "reserved": 0.0,
                 "total": amount,
+                "bot_amount": amount,
+                "free_for_manual": 0.0,
                 "value_thb": value_thb,
+                "bot_value_thb": value_thb,
                 "current_price": current_price,
                 "avg_entry_price": buy_price,
                 "pnl_percent": pnl_percent,
                 "pnl_thb": pnl_thb
             })
             total_balance_thb += value_thb
-            total_invested_thb += (amount * buy_price)
+            total_invested_thb += value_thb
+            total_cost_basis_thb += (amount * buy_price)
 
     else:
         # LIVE wallet fetching
@@ -865,33 +877,42 @@ async def get_bot_wallet_summary():
                     continue
                 
                 current_price = get_coin_price(curr)
-                value_thb = total * current_price if curr != "THB" else total
+                value_thb = floor_thb(total * current_price) if curr != "THB" else total
                 
                 # Check if we have an active position tracked for this symbol (curr/THB)
                 pair_symbol = f"{curr}/THB"
                 avg_entry_price = None
                 pnl_percent = 0.0
                 pnl_thb = 0.0
+                bot_amount = 0.0
                 
                 if pair_symbol in bot.positions:
                     pos = bot.positions[pair_symbol]
+                    bot_amount = min(total, float(pos.get("amount", 0.0) or 0.0))
                     avg_entry_price = float(pos.get("buy_price", 0.0))
                     pnl_percent = float(pos.get("pnl_percent", 0.0))
                     pnl_thb = float(pos.get("pnl_thb", 0.0))
-                    total_invested_thb += (float(pos.get("amount", 0.0)) * avg_entry_price)
+                    total_cost_basis_thb += (bot_amount * avg_entry_price)
+                free_for_manual = max(0.0, available - bot_amount) if curr != "THB" else available
+                bot_value_thb = floor_thb(bot_amount * current_price) if curr != "THB" else 0.0
                 
                 assets.append({
                     "currency": curr,
                     "available": available,
                     "reserved": reserved,
                     "total": total,
+                    "bot_amount": bot_amount,
+                    "free_for_manual": free_for_manual,
                     "value_thb": value_thb,
+                    "bot_value_thb": bot_value_thb,
                     "current_price": current_price if curr != "THB" else 1.0,
                     "avg_entry_price": avg_entry_price,
                     "pnl_percent": pnl_percent,
                     "pnl_thb": pnl_thb
                 })
                 total_balance_thb += value_thb
+                if curr != "THB":
+                    total_invested_thb += value_thb
 
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to fetch live balances: {str(e)}")
@@ -904,8 +925,8 @@ async def get_bot_wallet_summary():
         if asset["avg_entry_price"] is not None and asset["currency"] != "THB":
             overall_pnl_thb += asset["pnl_thb"]
             
-    if total_invested_thb > 0:
-        overall_pnl_percent = (overall_pnl_thb / total_invested_thb) * 100
+    if total_cost_basis_thb > 0:
+        overall_pnl_percent = (overall_pnl_thb / total_cost_basis_thb) * 100
 
     return {
         "status": "success",

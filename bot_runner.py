@@ -720,6 +720,10 @@ class BotRunner:
                     return
 
             ai_result = self.evaluate_ai_buy_signal(symbol, df, last_price)
+            if self.config.get("ai_enabled", False) and not ai_result:
+                self.add_log(f"🤖 [AI Gate] Skip buy for {symbol}: AI review unavailable.")
+                return
+
             if ai_result and not self.is_ai_buy_allowed(symbol, ai_result):
                 return
             
@@ -783,7 +787,7 @@ class BotRunner:
             return None
 
         if not self.ai_analyzer.is_configured():
-            self.add_log(f"🤖 [AI Review] GEMINI_API_KEY is not configured. Fallback to strategy signal for {symbol}.")
+            self.add_log(f"🤖 [AI Review] GEMINI_API_KEY is not configured. Skip buy for {symbol}.")
             return None
 
         try:
@@ -805,7 +809,7 @@ class BotRunner:
             )
             return result
         except Exception as e:
-            self.add_log(f"🤖 [AI Review Failed] {symbol}: {str(e)}. Fallback to strategy signal.")
+            self.add_log(f"🤖 [AI Review Failed] {symbol}: {str(e)}. Skip buy.")
             return None
 
     def is_ai_buy_allowed(self, symbol, ai_result):
