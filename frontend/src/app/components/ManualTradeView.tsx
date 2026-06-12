@@ -16,7 +16,7 @@ function floorThb(value: number) {
 function getEstimatedThbValue(asset: string, amount: number, tickers: Record<string, TickerData>) {
   if (asset === "THB") return floorThb(amount);
   const ticker = tickers[`${asset}/THB`];
-  const valuationPrice = ticker?.bid || ticker?.last || 0;
+  const valuationPrice = ticker?.last || ticker?.bid || 0;
   return floorThb(amount * valuationPrice);
 }
 
@@ -260,7 +260,7 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
     const interval = setInterval(() => {
       fetchOpenOrders();
       fetchTradeHistory();
-    }, 8000);
+    }, 8282);
     return () => clearInterval(interval);
   }, []);
 

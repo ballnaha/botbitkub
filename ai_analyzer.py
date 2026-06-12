@@ -1,0 +1,157 @@
+import json
+import os
+import time
+from typing import Any, Dict
+
+import requests
+
+
+DEFAULT_AI_RESULT = {
+    "decision": "buy",
+    "score": 70,
+    "confidence": 0.5,
+    "reason": "AI analyzer unavailable; falling back to strategy signal.",
+    "replace_candidate": "",
+}
+
+
+class GeminiTradeAnalyzer:
+    def __init__(self):
+        self.session = requests.Session()
+        self.session.trust_env = False
+
+    def is_configured(self) -> bool:
+        return bool(os.getenv("GEMINI_API_KEY"))
+
+    def analyze_buy_signal(
+        self,
+        symbol: str,
+        market_snapshot: Dict[str, Any],
+        positions_snapshot: Dict[str, Any],
+        config: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        api_key = os.getenv("GEMINI_API_KEY")
+        if not api_key:
+            return {
+                **DEFAULT_AI_RESULT,
+                "reason": "GEMINI_API_KEY is not configured; strategy signal allowed without AI review.",
+            }
+
+        model = config.get("ai_model") or "gemini-3.5-flash"
+        timeout = float(config.get("ai_timeout_seconds", 8))
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+        prompt = self._build_prompt(symbol, market_snapshot, positions_snapshot, config)
+        payload = {
+            "contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "temperature": 0.2,
+                "responseFormat": {
+                    "text": {
+                        "mimeType": "application/json",
+                        "schema": {
+                            "type": "object",
+                            "properties": {
+                                "decision": {
+                                    "type": "string",
+                                    "enum": ["buy", "watch", "skip"],
+                                    "description": "buy if the signal is strong enough, watch if promising but not enough, skip if weak or risky.",
+                                },
+                                "score": {
+                                    "type": "integer",
+                                    "description": "Opportunity score from 0 to 100.",
+                                },
+                                "confidence": {
+                                    "type": "number",
+                                    "description": "Confidence from 0.0 to 1.0.",
+                                },
+                                "reason": {
+                                    "type": "string",
+                                    "description": "Short practical reason for the decision.",
+                                },
+                                "replace_candidate": {
+                                    "type": "string",
+                                    "description": "Weakest current position symbol if a replacement should be considered, otherwise empty string.",
+                                },
+                            },
+                            "required": ["decision", "score", "confidence", "reason", "replace_candidate"],
+                        },
+                    }
+                },
+            },
+        }
+
+        response = self.session.post(
+            url,
+            headers={"x-goog-api-key": api_key, "Content-Type": "application/json"},
+            json=payload,
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        raw = response.json()
+        text = self._extract_text(raw)
+        parsed = json.loads(text)
+        return self._normalize_result(parsed)
+
+    def _build_prompt(
+        self,
+        symbol: str,
+        market_snapshot: Dict[str, Any],
+        positions_snapshot: Dict[str, Any],
+        config: Dict[str, Any],
+    ) -> str:
+        max_open = int(config.get("max_open_trades", 3))
+        used_slots = len(positions_snapshot)
+        min_score = int(config.get("ai_min_score", 65))
+        min_confidence = float(config.get("ai_min_confidence", 0.55))
+        context = {
+            "symbol": symbol,
+            "market": market_snapshot,
+            "active_positions": positions_snapshot,
+            "risk_rules": {
+                "max_open_trades": max_open,
+                "used_slots": used_slots,
+                "slots_available": max(0, max_open - used_slots),
+                "stake_amount_thb": config.get("stake_amount_thb"),
+                "max_budget_thb": config.get("max_budget_thb"),
+                "take_profit_pct": config.get("take_profit_pct"),
+                "stop_loss_pct": config.get("stop_loss_pct"),
+                "min_ai_score": min_score,
+                "min_ai_confidence": min_confidence,
+            },
+        }
+        return (
+            "You are a conservative crypto spot-trading signal reviewer for a Bitkub THB bot. "
+            "The strategy has already produced a BUY signal. Your job is only to score and filter it. "
+            "Do not invent prices. Prefer watch/skip when score or confidence is weak. "
+            "If slots are full, do not force a buy; use watch and optionally name a weak replace_candidate. "
+            "Return only JSON that matches the schema.\n\n"
+            f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}"
+        )
+
+    def _extract_text(self, raw: Dict[str, Any]) -> str:
+        candidates = raw.get("candidates") or []
+        if not candidates:
+            raise ValueError("Gemini returned no candidates")
+        parts = candidates[0].get("content", {}).get("parts", [])
+        if not parts or "text" not in parts[0]:
+            raise ValueError("Gemini returned no text")
+        return parts[0]["text"]
+
+    def _normalize_result(self, parsed: Dict[str, Any]) -> Dict[str, Any]:
+        decision = str(parsed.get("decision", "watch")).lower()
+        if decision not in {"buy", "watch", "skip"}:
+            decision = "watch"
+        score = int(max(0, min(100, int(parsed.get("score", 0)))))
+        confidence = float(parsed.get("confidence", 0.0))
+        confidence = max(0.0, min(1.0, confidence))
+        reason = str(parsed.get("reason", "")).strip()[:240]
+        replace_candidate = str(parsed.get("replace_candidate", "")).strip().upper()
+        return {
+            "decision": decision,
+            "score": score,
+            "confidence": confidence,
+            "reason": reason or "No AI reason provided.",
+            "replace_candidate": replace_candidate,
+            "analyzed_at": int(time.time()),
+        }

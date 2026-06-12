@@ -49,6 +49,21 @@ export interface HistoryItem {
   source?: string;
 }
 
+export interface AiWatchlistItem {
+  id: number;
+  symbol: string;
+  mode: string;
+  decision: "buy" | "watch" | "skip" | string;
+  score: number;
+  confidence: number;
+  reason: string;
+  replace_candidate?: string;
+  last_price: number;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export type BotConfig = {
   is_running: boolean;
   dry_run: boolean;
@@ -62,6 +77,12 @@ export type BotConfig = {
   symbols: string[];
   timeframe: string;
   strategy: string;
+  ai_enabled: boolean;
+  ai_provider: string;
+  ai_model: string;
+  ai_min_score: number;
+  ai_min_confidence: number;
+  ai_timeout_seconds: number;
 };
 
 export interface StrategyInfo {

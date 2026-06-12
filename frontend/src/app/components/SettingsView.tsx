@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { useToast } from "./Toast";
 import {
   Box,
   Button,
@@ -12,12 +13,13 @@ import {
   DialogTitle,
   Typography,
   Stack,
+  Switch,
+  Tab,
+  Tabs,
   Alert,
   Divider,
   TextField,
   Chip,
-  Tabs,
-  Tab,
   Paper,
   IconButton,
   InputAdornment,
@@ -45,6 +47,7 @@ interface SettingsViewProps {
   actionLoading?: boolean;
   allSymbols?: string[];
   autoSaveState?: "idle" | "saving" | "saved" | "error";
+  onSaveConfig?: () => void;
 }
 
 interface NumberStepperProps {
@@ -127,7 +130,9 @@ export function SettingsView({
   actionLoading = false,
   allSymbols = [],
   autoSaveState,
+  onSaveConfig,
 }: SettingsViewProps) {
+  const { addToast } = useToast();
   const [tabIndex, setTabIndex] = useState(0);
   const [confirmLiveOpen, setConfirmLiveOpen] = useState(false);
   const [selectedSymbolToAdd, setSelectedSymbolToAdd] = useState<string | null>(null);
@@ -139,14 +144,15 @@ export function SettingsView({
   const [dbPassword, setDbPassword] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
+  const [geminiApiKey, setGeminiApiKey] = useState("");
   const [maskedKey, setMaskedKey] = useState("");
   const [maskedSecret, setMaskedSecret] = useState("");
+  const [maskedGeminiKey, setMaskedGeminiKey] = useState("");
   const [credLoading, setCredLoading] = useState(false);
   const [credSaveLoading, setCredSaveLoading] = useState(false);
-  const [credMsg, setCredMsg] = useState({ type: "", text: "" });
 
-  const fetchCredentials = async () => {
-    setCredLoading(true);
+  const fetchCredentials = async (options?: { silent?: boolean }) => {
+    if (!options?.silent) setCredLoading(true);
     try {
       const res = await fetch("/api/settings/credentials");
       if (res.ok) {
@@ -155,12 +161,13 @@ export function SettingsView({
           setDbUsername(data.username || "");
           setMaskedKey(data.api_key_masked || "");
           setMaskedSecret(data.api_secret_masked || "");
+          setMaskedGeminiKey(data.gemini_api_key_masked || "");
         }
       }
     } catch (err) {
       console.error("Failed to fetch credentials", err);
     } finally {
-      setCredLoading(false);
+      if (!options?.silent) setCredLoading(false);
     }
   };
 
@@ -173,7 +180,6 @@ export function SettingsView({
   const handleUpdateCredentials = async (e: React.FormEvent) => {
     e.preventDefault();
     setCredSaveLoading(true);
-    setCredMsg({ type: "", text: "" });
     try {
       const res = await fetch("/api/settings/credentials", {
         method: "POST",
@@ -183,24 +189,26 @@ export function SettingsView({
           password: dbPassword || undefined,
           api_key: apiKey || undefined,
           api_secret: apiSecret || undefined,
+          gemini_api_key: geminiApiKey || undefined,
         }),
       });
       if (res.ok) {
         const data = await res.json();
         if (data.status === "success") {
-          setCredMsg({ type: "success", text: "บันทึกข้อมูลและอัปเดต API การเชื่อมต่อเรียบร้อยแล้ว!" });
+          addToast({ type: "success", title: "บันทึกสำเร็จ", message: "อัปเดต API Key และข้อมูลบัญชีเรียบร้อยแล้ว" });
           setApiKey("");
           setApiSecret("");
+          setGeminiApiKey("");
           setDbPassword("");
-          fetchCredentials();
+          fetchCredentials({ silent: true });
         } else {
-          setCredMsg({ type: "error", text: data.message || "เกิดข้อผิดพลาดในการบันทึกข้อมูล" });
+          addToast({ type: "error", title: "บันทึกล้มเหลว", message: data.message || "เกิดข้อผิดพลาดในการบันทึกข้อมูล" });
         }
       } else {
-        setCredMsg({ type: "error", text: "ไม่สามารถบันทึกข้อมูลไปยังเซิร์ฟเวอร์ได้" });
+        addToast({ type: "error", title: "บันทึกล้มเหลว", message: "ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ได้" });
       }
     } catch (err) {
-      setCredMsg({ type: "error", text: "การเชื่อมต่อเซิร์ฟเวอร์ขัดข้อง" });
+      addToast({ type: "error", title: "เชื่อมต่อล้มเหลว", message: "การเชื่อมต่อเซิร์ฟเวอร์ขัดข้อง" });
     } finally {
       setCredSaveLoading(false);
     }
@@ -296,92 +304,226 @@ export function SettingsView({
     riskDescription = "กลยุทธ์แบบสมดุล มุ่งเน้นการเติบโตของกำไรอย่างมั่นคงในสภาวะตลาดปกติ";
   }
 
+  const settingsSections = [
+    {
+      id: 0,
+      icon: <Shield size={16} />,
+      title: "Operation",
+      subtitle: botConfig.dry_run ? "Dry-run active" : "Live trading active",
+      color: botConfig.dry_run ? "#94a3b8" : "#00c16a",
+    },
+    {
+      id: 1,
+      icon: <Brain size={16} />,
+      title: "Strategy",
+      subtitle: strategies.find((item) => item.id === botConfig.strategy)?.name || botConfig.strategy || "Select strategy",
+      color: "#60a5fa",
+    },
+    {
+      id: 2,
+      icon: <Coins size={16} />,
+      title: "Markets",
+      subtitle: `${(botConfig.symbols || []).length} symbols selected`,
+      color: "#fbbf24",
+    },
+    {
+      id: 3,
+      icon: <Activity size={16} />,
+      title: "Risk Parameters",
+      subtitle: `${botConfig.stake_amount_thb} THB / trade`,
+      color: riskColor,
+    },
+    {
+      id: 4,
+      icon: <Key size={16} />,
+      title: "API Access",
+      subtitle: maskedKey ? "Credentials stored" : "Credentials setup",
+      color: "#a78bfa",
+    },
+  ];
+
   return (
-    <Box sx={{ width: "100%", maxWidth: "none", mx: 0, py: 0 }}>
-      <Card
-        sx={{
-          background: "rgba(8, 12, 20, 0.72)",
-          backdropFilter: "blur(24px)",
-          border: botConfig.dry_run 
-            ? "1px solid rgba(148, 163, 184, 0.15)"
-            : "1px solid rgba(0, 193, 106, 0.15)",
-          borderRadius: "20px",
-          boxShadow: botConfig.dry_run
-            ? "0 9px 32px 0 rgba(0, 0, 0, 0.2)"
-            : "0 9px 32px 0 rgba(0, 193, 106, 0.05)",
-          transition: "all 0.3s ease",
-        }}
-      >
-        <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-          <Stack spacing={1}>
-            {/* Header Title */}
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1, pb: 0.5 }}>
-              <Box
+    <Box sx={{ width: "100%", maxWidth: 1180, mx: "auto", mt: { xs: 1, sm: 1.5 }, py: 0 }}>
+      <Stack spacing={1.25}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 1.4, minWidth: 0, px: { xs: 0.5, sm: 0.25 }, py: 0.25 }}>
+          <Box
+            sx={{
+              width: 40,
+              height: 40,
+              borderRadius: "12px",
+              display: "grid",
+              placeItems: "center",
+              backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.08)" : "rgba(0, 193, 106, 0.08)",
+              color: botConfig.dry_run ? "#94a3b8" : "primary.main",
+              border: botConfig.dry_run ? "1px solid rgba(148, 163, 184, 0.14)" : "1px solid rgba(0, 193, 106, 0.18)",
+              flexShrink: 0,
+            }}
+          >
+            <Sliders size={19} />
+          </Box>
+          <Box sx={{ minWidth: 0 }}>
+            <Typography sx={{ fontWeight: 700, fontSize: { xs: "1.02rem", sm: "1.16rem" }, fontFamily: "Outfit, sans-serif", color: "text.primary" }}>
+              Bot Configuration
+            </Typography>
+            <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", mt: 0.2 }}>
+              ตั้งค่าการทำงาน กลยุทธ์ ตลาด ความเสี่ยง และสิทธิ์เชื่อมต่อ Bitkub
+            </Typography>
+          </Box>
+        </Box>
+
+        <Paper
+          sx={{
+            display: { xs: "block", lg: "none" },
+            borderRadius: "14px",
+            backgroundColor: "rgba(8, 12, 20, 0.78)",
+            border: "1px solid rgba(255, 255, 255, 0.055)",
+            overflow: "hidden",
+          }}
+        >
+          <Tabs
+            value={tabIndex}
+            onChange={(_, nextValue: number) => setTabIndex(nextValue)}
+            variant="scrollable"
+            scrollButtons="auto"
+            allowScrollButtonsMobile
+            sx={{
+              minHeight: 48,
+              px: 0.5,
+              "& .MuiTabs-scroller": {
+                scrollSnapType: "x proximity",
+              },
+              "& .MuiTabs-list": {
+                gap: 0.35,
+              },
+              "& .MuiTabs-indicator": {
+                display: "none",
+              },
+            }}
+          >
+            {settingsSections.map((section) => (
+              <Tab
+                key={section.id}
+                value={section.id}
+                icon={section.icon}
+                iconPosition="start"
+                label={section.title}
                 sx={{
-                  p: 1.2,
-                  backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.08)" : "rgba(0, 193, 106, 0.08)",
-                  color: botConfig.dry_run ? "#94a3b8" : "primary.main",
-                  borderRadius: "12px",
-                  display: "flex",
-                  transition: "all 0.3s ease",
+                  minHeight: 48,
+                  minWidth: { xs: 112, sm: 132 },
+                  px: 1.25,
+                  mx: 0.15,
+                  my: 0.6,
+                  borderRadius: "11px",
+                  textTransform: "none",
+                  fontSize: "0.78rem",
+                  fontWeight: 700,
+                  color: "text.secondary",
+                  scrollSnapAlign: "start",
+                  border: "1px solid transparent",
+                  transition: "background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease",
+                  "& .MuiTab-icon": {
+                    mr: 0.7,
+                    color: section.color,
+                    transition: "color 180ms ease, transform 180ms ease",
+                  },
+                  "&.Mui-selected": {
+                    color: "text.primary",
+                    backgroundColor: `${section.color}14`,
+                    borderColor: `${section.color}2e`,
+                    transform: "translateY(-1px)",
+                    "& .MuiTab-icon": {
+                      transform: "scale(1.04)",
+                    },
+                  },
+                }}
+              />
+            ))}
+          </Tabs>
+        </Paper>
+
+        <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "280px minmax(0, 1fr)" }, gap: 1.25, alignItems: "start" }}>
+          <Paper
+            sx={{
+              display: { xs: "none", lg: "block" },
+              p: 1,
+              borderRadius: "16px",
+              backgroundColor: "rgba(8, 12, 20, 0.72)",
+              border: "1px solid rgba(255, 255, 255, 0.045)",
+              position: { lg: "sticky" },
+              top: { lg: 12 },
+            }}
+          >
+            <Stack spacing={0.5}>
+              {settingsSections.map((section) => {
+                const isActive = tabIndex === section.id;
+                return (
+                  <Button
+                    key={section.id}
+                    onClick={() => setTabIndex(section.id)}
+                    sx={{
+                      justifyContent: "flex-start",
+                      textAlign: "left",
+                      gap: 1,
+                      p: 1.2,
+                      borderRadius: "12px",
+                      textTransform: "none",
+                      color: isActive ? "text.primary" : "text.secondary",
+                      backgroundColor: isActive ? "rgba(255, 255, 255, 0.045)" : "transparent",
+                      border: isActive ? `1px solid ${section.color}24` : "1px solid transparent",
+                      transition: "background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease",
+                      transform: isActive ? "translateX(2px)" : "translateX(0)",
+                      "&:hover": {
+                        backgroundColor: "rgba(255, 255, 255, 0.035)",
+                        color: "text.primary",
+                      },
+                    }}
+                  >
+                    <Box sx={{ width: 34, height: 34, borderRadius: "10px", display: "grid", placeItems: "center", color: section.color, backgroundColor: `${section.color}12`, flexShrink: 0 }}>
+                      {section.icon}
+                    </Box>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography sx={{ fontSize: "0.86rem", fontWeight: 700, lineHeight: 1.2 }}>
+                        {section.title}
+                      </Typography>
+                      <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", lineHeight: 1.25, mt: 0.2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {section.subtitle}
+                      </Typography>
+                    </Box>
+                  </Button>
+                );
+              })}
+            </Stack>
+          </Paper>
+
+          <Card
+            sx={{
+              background: "rgba(8, 12, 20, 0.72)",
+              backdropFilter: "blur(24px)",
+              border: "1px solid rgba(255, 255, 255, 0.045)",
+              borderRadius: "18px",
+              boxShadow: "0 9px 32px 0 rgba(0, 0, 0, 0.2)",
+              minWidth: 0,
+              "@keyframes settings-panel-enter": {
+                "0%": {
+                  opacity: 0,
+                  transform: "translateY(8px)",
+                },
+                "100%": {
+                  opacity: 1,
+                  transform: "translateY(0)",
+                },
+              },
+            }}
+          >
+            <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+              <Box
+                key={tabIndex}
+                sx={{
+                  animation: "settings-panel-enter 190ms ease-out",
+                  willChange: "opacity, transform",
                 }}
               >
-                <Sliders size={20} />
-              </Box>
-              <Box>
-                <Typography sx={{ fontWeight: 600, fontSize: "1.15rem", fontFamily: "Outfit, sans-serif" }}>
-                  การตั้งค่าระบบบอทเทรด
-                </Typography>
-                <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", mt: 0.3 }}>
-                  ปรับปรุงและจูนพารามิเตอร์การทำงานหลักของระบบเทรดอัจฉริยะ Bitkub
-                </Typography>
-              </Box>
-            </Box>
-
-            {/* Premium Tab Bar Navigation */}
-            <Tabs
-              value={tabIndex}
-              onChange={(_, newValue) => setTabIndex(newValue)}
-              variant="fullWidth"
-              sx={{
-                backgroundColor: "rgba(13, 20, 35, 0.55)",
-                borderRadius: "14px",
-                p: 0.5,
-                border: "1px solid rgba(255, 255, 255, 0.04)",
-                "& .MuiTabs-indicator": {
-                  backgroundColor: botConfig.dry_run ? "#94a3b8" : "primary.main",
-                  borderRadius: "11px",
-                  height: "100%",
-                  opacity: 0.08,
-                },
-                "& .MuiTab-root": {
-                  minHeight: "42px",
-                  fontSize: "0.85rem",
-                  fontWeight: 600,
-                  borderRadius: "11px",
-                  color: "text.secondary",
-                  textTransform: "none",
-                  transition: "all 0.25s ease",
-                  gap: 1,
-                  "&.Mui-selected": {
-                    color: botConfig.dry_run ? "#94a3b8" : "primary.main",
-                    backgroundColor: "rgba(255, 255, 255, 0.02)",
-                  },
-                  "&:hover": {
-                    color: "text.primary",
-                    backgroundColor: "rgba(255, 255, 255, 0.01)",
-                  }
-                }
-              }}
-            >
-              <Tab icon={<Shield size={14} />} iconPosition="start" label="โหมดการทำงาน" />
-              <Tab icon={<Brain size={14} />} iconPosition="start" label="กลยุทธ์การเทรด" />
-              <Tab icon={<Coins size={14} />} iconPosition="start" label="สแกนคู่เหรียญ" />
-              <Tab icon={<Activity size={14} />} iconPosition="start" label="พารามิเตอร์เทรด" />
-              <Tab icon={<Key size={14} />} iconPosition="start" label="Bitkub API" />
-            </Tabs>
-
-            <Divider sx={{ borderColor: "rgba(255,255,255,0.05)" }} />
+                <Stack spacing={1.5}>
 
             {/* TAB PANEL 0: Trading Mode */}
             {tabIndex === 0 && (
@@ -529,12 +671,108 @@ export function SettingsView({
                   </Typography>
                 </Box>
 
+                <Paper
+                  sx={{
+                    p: 1.5,
+                    borderRadius: "14px",
+                    backgroundColor: botConfig.ai_enabled ? "rgba(96, 165, 250, 0.045)" : "rgba(13, 20, 35, 0.3)",
+                    border: botConfig.ai_enabled ? "1px solid rgba(96, 165, 250, 0.22)" : "1px solid rgba(255, 255, 255, 0.04)",
+                  }}
+                >
+                  <Stack spacing={1.25}>
+                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1 }}>
+                      <Stack direction="row" spacing={1} sx={{ alignItems: "center", minWidth: 0 }}>
+                        <Box sx={{ width: 34, height: 34, borderRadius: "10px", display: "grid", placeItems: "center", color: "#60a5fa", backgroundColor: "rgba(96, 165, 250, 0.12)", flexShrink: 0 }}>
+                          <Brain size={16} />
+                        </Box>
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "text.primary" }}>
+                            Gemini AI Signal Review
+                          </Typography>
+                          <Typography sx={{ fontSize: "0.76rem", color: "text.secondary", lineHeight: 1.35 }}>
+                            ให้ AI ช่วยให้คะแนนสัญญาณซื้อหลัง strategy ทำงาน และก่อนบอทส่งคำสั่งซื้อ
+                          </Typography>
+                        </Box>
+                      </Stack>
+                      <Switch
+                        checked={botConfig.ai_enabled}
+                        onChange={(e) => updateBotConfigDraft({ ai_enabled: e.target.checked })}
+                        sx={{
+                          "& .MuiSwitch-switchBase.Mui-checked": { color: "#60a5fa" },
+                          "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#60a5fa" },
+                        }}
+                      />
+                    </Box>
+
+                    {botConfig.ai_enabled && (
+                      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1.1fr 0.75fr 0.75fr" }, gap: 1.2 }}>
+                        <Stack spacing={0.8}>
+                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            Gemini Model
+                          </Typography>
+                          <TextField
+                            value={botConfig.ai_model || "gemini-3.5-flash"}
+                            onChange={(e) => updateBotConfigDraft({ ai_model: e.target.value })}
+                            size="small"
+                            sx={{
+                              "& input": { fontSize: "0.82rem", color: "#ffffff", fontFamily: "monospace" },
+                              "& .MuiOutlinedInput-root": {
+                                borderRadius: "11px",
+                                backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
+                              },
+                            }}
+                          />
+                        </Stack>
+                        <Stack spacing={0.8}>
+                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            Min Score
+                          </Typography>
+                          <NumberStepper
+                            value={botConfig.ai_min_score ?? 65}
+                            step={5}
+                            min={0}
+                            onChange={(value) => updateBotConfigDraft({ ai_min_score: Math.max(0, Math.min(100, Math.round(value))) })}
+                          />
+                        </Stack>
+                        <Stack spacing={0.8}>
+                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            Confidence
+                          </Typography>
+                          <NumberStepper
+                            value={botConfig.ai_min_confidence ?? 0.55}
+                            step={0.05}
+                            min={0}
+                            onChange={(value) => updateBotConfigDraft({ ai_min_confidence: Math.max(0, Math.min(1, Number(value.toFixed(2)))) })}
+                          />
+                        </Stack>
+                      </Box>
+                    )}
+
+                    {botConfig.ai_enabled && (
+                      <Alert
+                        severity="info"
+                        sx={{
+                          borderRadius: "12px",
+                          backgroundColor: "rgba(96, 165, 250, 0.04)",
+                          border: "1px solid rgba(96, 165, 250, 0.12)",
+                          color: "text.secondary",
+                          fontSize: "0.78rem",
+                          "& .MuiAlert-icon": { color: "#60a5fa" },
+                        }}
+                      >
+                        ตั้งค่า `GEMINI_API_KEY` ในไฟล์ `.env` เพื่อให้ AI ทำงานจริง หากยังไม่ตั้งค่า บอทจะ fallback ไปใช้ strategy เดิมและบันทึก log แจ้งไว้
+                      </Alert>
+                    )}
+                  </Stack>
+                </Paper>
+
                 {strategiesLoading ? (
                   <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
                     <Typography sx={{ fontSize: "0.85rem", color: "text.secondary" }}>กำลังโหลดกลยุทธ์...</Typography>
                   </Box>
                 ) : (
-                  <Stack spacing={1}>
+                  <Stack spacing={0.8}>
                     {strategies.map((strat) => {
                       const isActive = (botConfig.strategy || "multi_indicator") === strat.id;
                       const riskColors: Record<string, { color: string; label: string }> = {
@@ -549,43 +787,26 @@ export function SettingsView({
                           key={strat.id}
                           onClick={() => updateBotConfigDraft({ strategy: strat.id } as Partial<BotConfig>)}
                           sx={{
-                            p: 2.5,
-                            borderRadius: "16px",
+                            p: 1.5,
+                            borderRadius: "12px",
                             cursor: "pointer",
                             backgroundColor: isActive ? "rgba(0, 193, 106, 0.03)" : "rgba(13, 20, 35, 0.3)",
                             border: isActive ? "1.5px solid rgba(0, 193, 106, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
-                            boxShadow: isActive ? "0 0 20px rgba(0, 193, 106, 0.05)" : "none",
-                            transition: "all 0.25s ease",
+                            boxShadow: isActive ? "0 0 15px rgba(0, 193, 106, 0.05)" : "none",
+                            transition: "all 0.2s ease",
                             "&:hover": {
                               borderColor: isActive ? "rgba(0, 193, 106, 0.6)" : "rgba(255, 255, 255, 0.1)",
                               backgroundColor: isActive ? "rgba(0, 193, 106, 0.05)" : "rgba(255, 255, 255, 0.015)",
-                              transform: "translateY(-1px)",
                             },
                           }}
                         >
-                          <Stack spacing={1.5}>
-                            {/* Header */}
-                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
-                              <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                                <Box
-                                  sx={{
-                                    width: 32,
-                                    height: 32,
-                                    borderRadius: "10px",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    backgroundColor: isActive ? "rgba(0, 193, 106, 0.1)" : "rgba(255, 255, 255, 0.04)",
-                                    transition: "all 0.2s ease",
-                                  }}
-                                >
-                                  <Brain size={16} style={{ color: isActive ? "#00c16a" : "#94a3b8" }} />
-                                </Box>
-                                <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: isActive ? "primary.main" : "text.primary" }}>
-                                  {strat.name}
-                                </Typography>
-                              </Stack>
-                              <Stack direction="row" spacing={0.5}>
+                          <Stack spacing={0.8}>
+                            {/* Header row */}
+                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 0.5 }}>
+                              <Typography sx={{ fontWeight: 600, fontSize: "0.88rem", color: isActive ? "primary.main" : "text.primary" }}>
+                                {strat.name}
+                              </Typography>
+                              <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
                                 <Chip
                                   label={risk.label}
                                   size="small"
@@ -610,70 +831,72 @@ export function SettingsView({
                             </Box>
 
                             {/* Description */}
-                            <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", lineHeight: 1.55 }}>
+                            <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.45 }}>
                               {strat.description}
                             </Typography>
 
-                            {/* Indicators */}
-                            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                            {/* Indicators - compact inline */}
+                            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.4 }}>
                               {strat.indicators.map((ind) => (
                                 <Chip
                                   key={ind}
                                   label={ind}
                                   size="small"
                                   sx={{
-                                    height: 20,
-                                    fontSize: "0.7rem",
+                                    height: 18,
+                                    fontSize: "0.65rem",
                                     fontWeight: 500,
                                     backgroundColor: "rgba(255, 255, 255, 0.02)",
                                     color: "text.secondary",
                                     border: "1px solid rgba(255, 255, 255, 0.05)",
-                                    borderRadius: "6px",
+                                    borderRadius: "5px",
                                   }}
                                 />
                               ))}
                             </Box>
 
-                            {/* Buy/Sell Logic — collapsible detail */}
-                            <Box
-                              sx={{
-                                display: "grid",
-                                gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-                                gap: 1,
-                                mt: 0.5,
-                              }}
-                            >
+                            {/* Buy/Sell Logic - only show for active strategy */}
+                            {isActive && (
                               <Box
                                 sx={{
-                                  p: 1.5,
-                                  borderRadius: "10px",
-                                  backgroundColor: "rgba(0, 193, 106, 0.02)",
-                                  border: "1px solid rgba(0, 193, 106, 0.06)",
+                                  display: "grid",
+                                  gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                                  gap: 0.8,
+                                  mt: 0.3,
                                 }}
                               >
-                                <Typography sx={{ fontSize: "0.72rem", fontWeight: 600, color: "#00c16a", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.3 }}>
-                                  🟢 เงื่อนไขซื้อ (Buy)
-                                </Typography>
-                                <Typography sx={{ fontSize: "0.75rem", color: "text.secondary", lineHeight: 1.4 }}>
-                                  {strat.buy_logic}
-                                </Typography>
+                                <Box
+                                  sx={{
+                                    p: 1,
+                                    borderRadius: "8px",
+                                    backgroundColor: "rgba(0, 193, 106, 0.02)",
+                                    border: "1px solid rgba(0, 193, 106, 0.06)",
+                                  }}
+                                >
+                                  <Typography sx={{ fontSize: "0.68rem", fontWeight: 600, color: "#00c16a", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.2 }}>
+                                    🟢 ซื้อ
+                                  </Typography>
+                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", lineHeight: 1.35 }}>
+                                    {strat.buy_logic}
+                                  </Typography>
+                                </Box>
+                                <Box
+                                  sx={{
+                                    p: 1,
+                                    borderRadius: "8px",
+                                    backgroundColor: "rgba(239, 91, 99, 0.02)",
+                                    border: "1px solid rgba(239, 91, 99, 0.06)",
+                                  }}
+                                >
+                                  <Typography sx={{ fontSize: "0.68rem", fontWeight: 600, color: "#ef5b63", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.2 }}>
+                                    🔴 ขาย
+                                  </Typography>
+                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", lineHeight: 1.35 }}>
+                                    {strat.sell_logic}
+                                  </Typography>
+                                </Box>
                               </Box>
-                              <Box
-                                sx={{
-                                  p: 1.5,
-                                  borderRadius: "10px",
-                                  backgroundColor: "rgba(239, 91, 99, 0.02)",
-                                  border: "1px solid rgba(239, 91, 99, 0.06)",
-                                }}
-                              >
-                                <Typography sx={{ fontSize: "0.72rem", fontWeight: 600, color: "#ef5b63", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.3 }}>
-                                  🔴 เงื่อนไขขาย (Sell)
-                                </Typography>
-                                <Typography sx={{ fontSize: "0.75rem", color: "text.secondary", lineHeight: 1.4 }}>
-                                  {strat.sell_logic}
-                                </Typography>
-                              </Box>
-                            </Box>
+                            )}
                           </Stack>
                         </Paper>
                       );
@@ -932,7 +1155,7 @@ export function SettingsView({
                     </Typography>
                     <NumberStepper
                       value={botConfig.max_budget_thb ?? 5000}
-                      step={500}
+                      step={100}
                       min={100}
                       suffix="THB"
                       onChange={(value) => updateBotConfigDraft({ max_budget_thb: value })}
@@ -1069,19 +1292,7 @@ export function SettingsView({
                   </Typography>
                 </Box>
 
-                {credMsg.text && (
-                  <Alert 
-                    severity={credMsg.type as any} 
-                    sx={{ 
-                      borderRadius: "12px", 
-                      fontSize: "0.82rem",
-                      border: credMsg.type === "success" ? "1px solid rgba(0, 193, 106, 0.15)" : "1px solid rgba(239, 91, 99, 0.15)",
-                      backgroundColor: credMsg.type === "success" ? "rgba(0, 193, 106, 0.02)" : "rgba(239, 91, 99, 0.02)"
-                    }}
-                  >
-                    {credMsg.text}
-                  </Alert>
-                )}
+
 
                 {credLoading ? (
                   <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
@@ -1144,6 +1355,32 @@ export function SettingsView({
                           </Typography>
                         </Stack>
 
+                        <Stack spacing={1} sx={{ gridColumn: { sm: "span 2" } }}>
+                          <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            Gemini API Key
+                          </Typography>
+                          <TextField
+                            type="password"
+                            placeholder={maskedGeminiKey || "กรุณากรอก Gemini API Key"}
+                            value={geminiApiKey}
+                            onChange={(e) => setGeminiApiKey(e.target.value)}
+                            size="small"
+                            variant="outlined"
+                            sx={{
+                              "& input": { fontSize: "0.85rem", color: "#ffffff", fontFamily: "monospace" },
+                              "& .MuiOutlinedInput-root": {
+                                borderRadius: "12px",
+                                backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                "& fieldset": { borderColor: "rgba(96, 165, 250, 0.14)" },
+                                "&:hover fieldset": { borderColor: "rgba(96, 165, 250, 0.28)" },
+                              }
+                            }}
+                          />
+                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
+                            ใช้สำหรับ Gemini AI Signal Review เท่านั้น ไม่เกี่ยวกับสิทธิ์ส่งคำสั่งซื้อขาย Bitkub
+                          </Typography>
+                        </Stack>
+
                         {/* Dashboard Username */}
                         <Stack spacing={1}>
                           <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
@@ -1195,6 +1432,7 @@ export function SettingsView({
                         type="submit"
                         disabled={credSaveLoading}
                         variant="contained"
+                        startIcon={credSaveLoading ? <CircularProgress size={15} sx={{ color: "inherit" }} /> : undefined}
                         sx={{
                           py: 1.2,
                           fontWeight: 600,
@@ -1211,7 +1449,7 @@ export function SettingsView({
                           }
                         }}
                       >
-                        {credSaveLoading ? "กำลังบันทึกข้อมูล..." : "บันทึกการเชื่อมต่อ & รหัสผ่าน"}
+                        {credSaveLoading ? "Loading..." : "บันทึกข้อมูล"}
                       </Button>
                     </Stack>
                   </form>
@@ -1244,48 +1482,54 @@ export function SettingsView({
               </Stack>
             )}
 
-            <Divider sx={{ borderColor: "rgba(255,255,255,0.05)" }} />
-
-            {/* Auto-save Status Indicator */}
-            <Box
-              sx={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                py: 1.5,
-                gap: 1.2,
-                borderRadius: "12px",
-                backgroundColor: "rgba(255,255,255,0.012)",
-                border: "1px solid rgba(255,255,255,0.03)",
-              }}
-            >
-              {autoSaveState === "saving" && (
-                <>
-                  <CircularProgress size={14} sx={{ color: botConfig.dry_run ? "#94a3b8" : "primary.main" }} />
-                  <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", fontWeight: 500 }}>
-                    กำลังบันทึกการตั้งค่าอัตโนมัติ...
-                  </Typography>
-                </>
-              )}
-              {autoSaveState === "saved" && (
-                <Typography sx={{ fontSize: "0.82rem", color: "#00c16a", fontWeight: 600 }}>
-                  ✓ บันทึกการตั้งค่าระบบเรียบร้อยแล้ว
-                </Typography>
-              )}
-              {autoSaveState === "error" && (
-                <Typography sx={{ fontSize: "0.82rem", color: "#ef5b63", fontWeight: 600 }}>
-                  ✗ เกิดข้อผิดพลาดในการบันทึกข้อมูล
-                </Typography>
-              )}
-              {(!autoSaveState || autoSaveState === "idle") && (
-                <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", fontWeight: 500 }}>
-                  ระบบจะบันทึกการเปลี่ยนแปลงทั้งหมดโดยอัตโนมัติ
-                </Typography>
-              )}
-            </Box>
-          </Stack>
+            {/* Auto-save status for bot config tabs (0-3), hidden on API tab since it has its own save */}
+            {tabIndex !== 4 && (
+              <>
+                <Divider sx={{ borderColor: "rgba(255,255,255,0.05)" }} />
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    py: 1.5,
+                    gap: 1.2,
+                    borderRadius: "12px",
+                    backgroundColor: "rgba(255,255,255,0.012)",
+                    border: "1px solid rgba(255,255,255,0.03)",
+                  }}
+                >
+                  {autoSaveState === "saving" && (
+                    <>
+                      <CircularProgress size={14} sx={{ color: botConfig.dry_run ? "#94a3b8" : "primary.main" }} />
+                      <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", fontWeight: 500 }}>
+                        กำลังบันทึกการตั้งค่าอัตโนมัติ...
+                      </Typography>
+                    </>
+                  )}
+                  {autoSaveState === "saved" && (
+                    <Typography sx={{ fontSize: "0.82rem", color: "#00c16a", fontWeight: 600 }}>
+                      ✓ บันทึกการตั้งค่าระบบเรียบร้อยแล้ว
+                    </Typography>
+                  )}
+                  {autoSaveState === "error" && (
+                    <Typography sx={{ fontSize: "0.82rem", color: "#ef5b63", fontWeight: 600 }}>
+                      ✗ เกิดข้อผิดพลาดในการบันทึกข้อมูล
+                    </Typography>
+                  )}
+                  {(!autoSaveState || autoSaveState === "idle") && (
+                    <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", fontWeight: 500 }}>
+                      การตั้งค่าจะถูกบันทึกโดยอัตโนมัติเมื่อมีการเปลี่ยนแปลง
+                    </Typography>
+                  )}
+                </Box>
+              </>
+            )}
+                </Stack>
+              </Box>
         </CardContent>
       </Card>
+        </Box>
+      </Stack>
 
       {/* Safety Mode switch dialog */}
       <Dialog

@@ -350,13 +350,13 @@ async def place_trade(trade: TradeRequest):
         if order_type not in ['limit', 'market']:
             raise HTTPException(status_code=400, detail="Type must be 'limit' or 'market'")
 
-        # Map symbol from 'BTC/THB' to 'BTC_THB'
+        # Map symbol from 'BTC/THB' to Bitkub pair format 'THB_BTC'
         standard_symbol = trade.symbol.upper()
         parts = standard_symbol.split('/')
         if len(parts) == 2:
-            bitkub_symbol = f"{parts[0]}_{parts[1]}"
+            bitkub_symbol = f"{parts[1]}_{parts[0]}".lower()
         else:
-            bitkub_symbol = standard_symbol
+            bitkub_symbol = standard_symbol.lower()
 
         # Setup endpoint
         if side == 'buy':
@@ -426,7 +426,7 @@ async def get_open_orders(symbol: str = None):
         async def fetch_for_symbol(s):
             parts = s.split("/")
             if len(parts) == 2:
-                bitkub_symbol = f"{parts[0]}_{parts[1]}"
+                bitkub_symbol = f"{parts[1]}_{parts[0]}"
             else:
                 bitkub_symbol = s
                 
@@ -466,7 +466,7 @@ async def post_cancel_order(req: CancelOrderRequest):
     try:
         parts = req.symbol.split("/")
         if len(parts) == 2:
-            bitkub_symbol = f"{parts[0]}_{parts[1]}"
+            bitkub_symbol = f"{parts[1]}_{parts[0]}"
         else:
             bitkub_symbol = req.symbol
             
@@ -527,7 +527,7 @@ async def get_order_history(symbol: str = None):
         async def fetch_for_symbol(s):
             parts = s.split("/")
             if len(parts) == 2:
-                bitkub_symbol = f"{parts[0]}_{parts[1]}"
+                bitkub_symbol = f"{parts[1]}_{parts[0]}"
             else:
                 bitkub_symbol = s
                 
@@ -585,6 +585,12 @@ class BotToggleRequest(BaseModel):
     max_budget_thb: float = None
     symbols: list[str] = None
     strategy: str = None
+    ai_enabled: bool = None
+    ai_provider: str = None
+    ai_model: str = None
+    ai_min_score: int = None
+    ai_min_confidence: float = None
+    ai_timeout_seconds: float = None
 
 class PanicSellRequest(BaseModel):
     symbol: str
@@ -609,7 +615,13 @@ async def get_bot_status():
         "leverage": bot.config.get("leverage", 1),
         "symbols": bot.config.get("symbols", []),
         "timeframe": bot.config.get("timeframe", "15"),
-        "strategy": bot.config.get("strategy", "multi_indicator")
+        "strategy": bot.config.get("strategy", "multi_indicator"),
+        "ai_enabled": bot.config.get("ai_enabled", False),
+        "ai_provider": bot.config.get("ai_provider", "gemini"),
+        "ai_model": bot.config.get("ai_model", "gemini-3.5-flash"),
+        "ai_min_score": bot.config.get("ai_min_score", 65),
+        "ai_min_confidence": bot.config.get("ai_min_confidence", 0.55),
+        "ai_timeout_seconds": bot.config.get("ai_timeout_seconds", 8),
     }
 
 @app.post("/api/bot/config")
@@ -638,6 +650,18 @@ async def save_bot_config(config_req: BotToggleRequest):
         bot.config["symbols"] = [sym.strip().upper() for sym in config_req.symbols if sym]
     if config_req.strategy is not None:
         bot.config["strategy"] = config_req.strategy
+    if config_req.ai_enabled is not None:
+        bot.config["ai_enabled"] = config_req.ai_enabled
+    if config_req.ai_provider is not None:
+        bot.config["ai_provider"] = config_req.ai_provider.strip().lower() or "gemini"
+    if config_req.ai_model is not None:
+        bot.config["ai_model"] = config_req.ai_model.strip() or "gemini-3.5-flash"
+    if config_req.ai_min_score is not None:
+        bot.config["ai_min_score"] = max(0, min(100, config_req.ai_min_score))
+    if config_req.ai_min_confidence is not None:
+        bot.config["ai_min_confidence"] = max(0.0, min(1.0, config_req.ai_min_confidence))
+    if config_req.ai_timeout_seconds is not None:
+        bot.config["ai_timeout_seconds"] = max(2.0, min(30.0, config_req.ai_timeout_seconds))
     bot.config["trade_direction"] = "long"
     bot.config["leverage"] = 1
         
@@ -670,6 +694,7 @@ async def toggle_bot():
 async def get_bot_positions():
     if not bot:
         return []
+    bot.reconcile_live_positions_with_wallet()
     bot.update_active_positions_pnl()
     return list(bot.positions.values())
 
@@ -678,6 +703,12 @@ async def get_bot_history():
     if not bot:
         return []
     return bot.get_history()
+
+@app.get("/api/bot/ai-watchlist")
+async def get_bot_ai_watchlist():
+    if not bot:
+        return []
+    return bot.get_ai_watchlist()
 
 @app.get("/api/bot/logs")
 async def get_bot_logs():
@@ -716,7 +747,8 @@ async def bot_panic_sell(req: PanicSellRequest):
     if success:
         return {"status": "success", "message": f"Successfully sold {symbol}."}
     else:
-        raise HTTPException(status_code=500, detail="Panic sell execution failed.")
+        detail = getattr(bot, "last_trade_error", "") or "Panic sell execution failed."
+        raise HTTPException(status_code=500, detail=detail)
 
 
 # ----------------------------------------------------
@@ -727,6 +759,7 @@ class CredentialsUpdateRequest(BaseModel):
     password: str = None
     api_key: str = None
     api_secret: str = None
+    gemini_api_key: str = None
 
 def update_env_file(updates: dict):
     env_path = ".env"
@@ -757,16 +790,20 @@ def update_env_file(updates: dict):
 async def get_credentials():
     api_key = os.getenv("BITKUB_API_KEY", "")
     api_secret = os.getenv("BITKUB_API_SECRET", "")
+    gemini_api_key = os.getenv("GEMINI_API_KEY", "")
     
     # Mask values
     masked_key = api_key[:6] + "..." + api_key[-4:] if len(api_key) > 10 else "not set" if not api_key else "configured"
     masked_secret = api_secret[:6] + "..." + api_secret[-4:] if len(api_secret) > 10 else "not set" if not api_secret else "configured"
+    masked_gemini_key = gemini_api_key[:6] + "..." + gemini_api_key[-4:] if len(gemini_api_key) > 10 else "not set" if not gemini_api_key else "configured"
     
     return {
         "status": "success",
         "username": os.getenv("DASHBOARD_USERNAME", "admin"),
         "api_key_masked": masked_key,
         "api_secret_masked": masked_secret,
+        "gemini_api_key_masked": masked_gemini_key,
+        "has_gemini_api_key": bool(gemini_api_key),
         "has_api_key": bool(api_key and not are_credentials_placeholder(api_key, api_secret))
     }
 
@@ -781,6 +818,8 @@ async def update_credentials(req: CredentialsUpdateRequest):
         updates["BITKUB_API_KEY"] = req.api_key.strip()
     if req.api_secret is not None and req.api_secret.strip():
         updates["BITKUB_API_SECRET"] = req.api_secret.strip()
+    if req.gemini_api_key is not None and req.gemini_api_key.strip():
+        updates["GEMINI_API_KEY"] = req.gemini_api_key.strip()
         
     if updates:
         try:

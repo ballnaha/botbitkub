@@ -35,19 +35,25 @@ export function LiveMarketTabs({
   wsConnected,
 }: LiveMarketTabsProps) {
   const [marketTab, setMarketTab] = useState<MarketTab>("volume");
-  const [favoriteSymbols, setFavoriteSymbols] = useState<string[]>(() => {
+  const [favoriteSymbols, setFavoriteSymbols] = useState<string[]>([]);
+  const [hasLoadedFavorites, setHasLoadedFavorites] = useState(false);
+
+  useEffect(() => {
     try {
-      if (typeof window === "undefined") return [];
       const stored = window.localStorage.getItem(FAVORITES_STORAGE_KEY);
       const parsed = stored ? JSON.parse(stored) : [];
       const symbols = Array.isArray(parsed) ? parsed : parsed?.symbols;
-      return Array.isArray(symbols) ? symbols.filter((item) => typeof item === "string") : [];
+      setFavoriteSymbols(Array.isArray(symbols) ? symbols.filter((item) => typeof item === "string") : []);
     } catch {
-      return [];
+      setFavoriteSymbols([]);
+    } finally {
+      setHasLoadedFavorites(true);
     }
-  });
+  }, []);
 
   useEffect(() => {
+    if (!hasLoadedFavorites) return;
+
     try {
       window.localStorage.setItem(FAVORITES_STORAGE_KEY, JSON.stringify({
         version: 1,
@@ -56,7 +62,7 @@ export function LiveMarketTabs({
     } catch {
       // Ignore storage failures; favorites still work for the current session.
     }
-  }, [favoriteSymbols]);
+  }, [favoriteSymbols, hasLoadedFavorites]);
 
   const visibleMarketTickers = useMemo(() => {
     const favorites = new Set(favoriteSymbols);

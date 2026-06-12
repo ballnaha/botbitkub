@@ -13,17 +13,19 @@ interface FooterProps {
 
 export function Footer({
   wsConnected = false,
-  backendConnected = false
+  backendConnected = false,
+  activeView,
 }: FooterProps) {
   // Determine consolidated system status
-  const isOnline = backendConnected && wsConnected;
-  const isLimited = backendConnected && !wsConnected;
+  const wsRequired = activeView !== "settings";
+  const isOnline = backendConnected && (!wsRequired || wsConnected);
+  const isLimited = backendConnected && wsRequired && !wsConnected;
 
   let statusColor = "#ef5b63"; // Offline
   let statusText = "Offline";
   if (isOnline) {
     statusColor = "#00c16a"; // Online
-    statusText = "System Active";
+    statusText = wsRequired ? "System Active" : "Backend Ready";
   } else if (isLimited) {
     statusColor = "#f59e0b"; // Connecting/Limited state
     statusText = "Connecting...";
@@ -33,7 +35,7 @@ export function Footer({
     <Box
       component="footer"
       sx={{
-        mt: 6,
+        mt: "auto",
         mb: 2,
         px: 3,
         py: 2,

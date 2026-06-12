@@ -30,7 +30,7 @@ const BITKUB_WS_BASE = "wss://api.bitkub.com/websocket-api/";
 
 const RECONNECT_DELAY_BASE = 2000;
 const MAX_RECONNECT_DELAY = 30000;
-const TICKER_FLUSH_INTERVAL = 250;
+const TICKER_FLUSH_INTERVAL = 1000;
 const WEBSOCKET_SYMBOL_LIMIT = 50;
 
 // Convert Bitkub symbol "THB_BTC" → standard "BTC/THB"
@@ -64,10 +64,14 @@ function streamToStandard(stream: string): string | null {
 export function useBitkubWebSocket(
   onUpdate: (tickers: TickerMap) => void,
   extraSymbols: string[] = [],
+  options: { enabled?: boolean; includeBaseSymbols?: boolean } = {},
 ) {
+  const enabled = options.enabled ?? true;
+  const includeBaseSymbols = options.includeBaseSymbols ?? true;
   const wsRef = useRef<WebSocket | null>(null);
   const connectWebSocketRef = useRef<(symbols: string[]) => void>(() => {});
   const tickersRef = useRef<TickerMap>({});
+  const pendingTickersRef = useRef<TickerMap>({});
   const baseStreamSymbolsRef = useRef<string[]>([]);
   const symbolsRef = useRef<string[]>([]);
   const reconnectAttemptRef = useRef(0);
@@ -102,7 +106,9 @@ export function useBitkubWebSocket(
     if (isUnmountedRef.current || !hasPendingTickerRef.current) return;
 
     hasPendingTickerRef.current = false;
-    onUpdate({ ...tickersRef.current });
+    const pendingTickers = pendingTickersRef.current;
+    pendingTickersRef.current = {};
+    onUpdate({ ...pendingTickers });
   }, [onUpdate]);
 
   const scheduleTickerFlush = useCallback(() => {
@@ -113,13 +119,18 @@ export function useBitkubWebSocket(
   }, [flushTickerUpdates]);
 
   const connectWebSocket = useCallback((symbols: string[]) => {
-    if (isUnmountedRef.current || symbols.length === 0) return;
+    if (isUnmountedRef.current) return;
 
     // Close existing connection
     if (wsRef.current) {
       wsRef.current.onclose = null;
       wsRef.current.close();
       wsRef.current = null;
+    }
+
+    if (symbols.length === 0) {
+      setIsConnected(false);
+      return;
     }
 
     // Build stream URL from all symbols
@@ -147,7 +158,7 @@ export function useBitkubWebSocket(
           if (!symbol) return;
 
           const previous = tickersRef.current[symbol];
-          tickersRef.current[symbol] = {
+          const nextTicker = {
             last: data.last ?? previous?.last ?? 0,
             bid: data.highestBid ?? previous?.bid ?? 0,
             ask: data.lowestAsk ?? previous?.ask ?? 0,
@@ -157,6 +168,21 @@ export function useBitkubWebSocket(
             quoteVolume: data.quoteVolume ?? previous?.quoteVolume ?? 0,
           };
 
+          if (
+            previous &&
+            previous.last === nextTicker.last &&
+            previous.bid === nextTicker.bid &&
+            previous.ask === nextTicker.ask &&
+            previous.high === nextTicker.high &&
+            previous.low === nextTicker.low &&
+            previous.percentage === nextTicker.percentage &&
+            previous.quoteVolume === nextTicker.quoteVolume
+          ) {
+            return;
+          }
+
+          tickersRef.current[symbol] = nextTicker;
+          pendingTickersRef.current[symbol] = nextTicker;
           scheduleTickerFlush();
         } catch {
           // Ignore parse errors
@@ -202,6 +228,19 @@ export function useBitkubWebSocket(
 
   // Fetch all available symbols, then connect WebSocket
   useEffect(() => {
+    if (!enabled) {
+      isUnmountedRef.current = true;
+      setIsConnected(false);
+      setStreamSymbolCount(0);
+      setTotalSymbolCount(0);
+      clearTimers();
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      return;
+    }
+
     isUnmountedRef.current = false;
 
     const init = async () => {
@@ -237,11 +276,12 @@ export function useBitkubWebSocket(
           return (initialTickers[b]?.quoteVolume ?? 0) - (initialTickers[a]?.quoteVolume ?? 0);
         });
 
-        const baseWebsocketSymbols = activeSymbols.slice(0, WEBSOCKET_SYMBOL_LIMIT);
-        const websocketSymbols = baseWebsocketSymbols;
+        const baseWebsocketSymbols = includeBaseSymbols ? activeSymbols.slice(0, WEBSOCKET_SYMBOL_LIMIT) : [];
+        const websocketSymbols = buildStreamSymbols(baseWebsocketSymbols);
         baseStreamSymbolsRef.current = baseWebsocketSymbols;
         symbolsRef.current = websocketSymbols;
         tickersRef.current = initialTickers;
+        pendingTickersRef.current = {};
         setStreamSymbolCount(websocketSymbols.length);
         setTotalSymbolCount(activeSymbols.length);
 
@@ -270,10 +310,10 @@ export function useBitkubWebSocket(
         wsRef.current = null;
       }
     };
-  }, [connectWebSocket, clearTimers, onUpdate]);
+  }, [buildStreamSymbols, clearTimers, connectWebSocket, enabled, includeBaseSymbols, onUpdate]);
 
   useEffect(() => {
-    if (isUnmountedRef.current || baseStreamSymbolsRef.current.length === 0) return;
+    if (!enabled || isUnmountedRef.current) return;
 
     const nextSymbols = buildStreamSymbols(baseStreamSymbolsRef.current);
     if (nextSymbols.join("|") === symbolsRef.current.join("|")) return;
@@ -281,7 +321,7 @@ export function useBitkubWebSocket(
     symbolsRef.current = nextSymbols;
     setStreamSymbolCount(nextSymbols.length);
     connectWebSocket(nextSymbols);
-  }, [buildStreamSymbols, connectWebSocket]);
+  }, [buildStreamSymbols, connectWebSocket, enabled]);
 
   return { isConnected, streamSymbolCount, totalSymbolCount };
 }

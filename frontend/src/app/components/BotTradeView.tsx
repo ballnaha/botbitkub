@@ -1,66 +1,7 @@
 import { useState, useMemo } from "react";
-import { Box, Button, Card, CardContent, Chip, CircularProgress, IconButton, InputAdornment, MenuItem, Paper, Select, Stack, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, TextField, Typography } from "@mui/material";
-import { Bot, History, Inbox, Minus, Plus, TrendingUp } from "lucide-react";
-import type { BotConfig, HistoryItem, PositionItem } from "./dashboardTypes";
-
-interface NumberStepperProps {
-  value: number;
-  step: number;
-  min?: number;
-  onChange: (value: number) => void;
-  suffix?: string;
-}
-
-function NumberStepper({ value, step, min, onChange, suffix }: NumberStepperProps) {
-  const updateValue = (nextValue: number) => {
-    const clampedValue = min === undefined ? nextValue : Math.max(min, nextValue);
-    const precision = step < 1 ? 2 : 0;
-    onChange(Number(clampedValue.toFixed(precision)));
-  };
-
-  return (
-    <Box sx={{ display: "grid", gridTemplateColumns: "36px 1fr 36px", alignItems: "stretch", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "12px", overflow: "hidden", backgroundColor: "rgba(2, 6, 23, 0.45)" }}>
-      <IconButton
-        type="button"
-        size="small"
-        onClick={() => updateValue(value - step)}
-        sx={{ borderRadius: 0, color: "text.secondary" }}
-      >
-        <Minus size={15} />
-      </IconButton>
-      <TextField
-        type="number"
-        value={value}
-        onChange={(e) => updateValue(Number(e.target.value || 0))}
-        variant="standard"
-        slotProps={{
-          input: {
-            disableUnderline: true,
-            endAdornment: suffix ? (
-              <InputAdornment position="end">
-                <Typography sx={{ fontSize: "0.78rem", fontWeight: 600, color: "text.secondary" }}>{suffix}</Typography>
-              </InputAdornment>
-            ) : undefined,
-            inputProps: {
-              step,
-              min,
-              style: { textAlign: "center", fontFamily: "monospace", fontWeight: 600, padding: "9px 4px" }
-            }
-          }
-        }}
-        sx={{ justifyContent: "center", "& input::-webkit-outer-spin-button, & input::-webkit-inner-spin-button": { WebkitAppearance: "none", margin: 0 }, "& input[type=number]": { MozAppearance: "textfield" } }}
-      />
-      <IconButton
-        type="button"
-        size="small"
-        onClick={() => updateValue(value + step)}
-        sx={{ borderRadius: 0, color: "text.secondary" }}
-      >
-        <Plus size={15} />
-      </IconButton>
-    </Box>
-  );
-}
+import { Box, Button, Card, CardContent, Chip, CircularProgress, MenuItem, Paper, Select, Stack, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography } from "@mui/material";
+import { Bot, Brain, History, Inbox, TrendingUp } from "lucide-react";
+import type { AiWatchlistItem, BotConfig, HistoryItem, PositionItem } from "./dashboardTypes";
 
 type TradeHistoryRange = "7d" | "30d" | "month" | "year" | "all";
 
@@ -71,6 +12,12 @@ const tradeHistoryRangeOptions: { value: TradeHistoryRange; label: string }[] = 
   { value: "year", label: "This Year" },
   { value: "all", label: "All" },
 ];
+
+const strategyDisplayNames: Record<string, string> = {
+  macd_rsi: "เล่นตามจังหวะกลับตัว (Safe Reversal)",
+  multi_indicator: "วิเคราะห์รอบด้าน (Balanced Signal)",
+  aggressive_momentum: "เก็งกำไรเร็ว (Fast Breakout)",
+};
 
 function parseHistoryDate(value: string) {
   if (!value) return null;
@@ -329,15 +276,14 @@ interface BotTradeViewProps {
   botConfig: BotConfig;
   positions: PositionItem[];
   history: HistoryItem[];
+  aiWatchlist: AiWatchlistItem[];
   handleBotToggle: () => void;
-  handleSaveBotSettings: () => void;
   handleOpenConfirmPanic: (symbol: string) => void;
-  updateBotConfigDraft: (patch: Partial<BotConfig>) => void;
   setActiveView?: (view: any) => void;
   dataLoading?: boolean;
 }
 
-export function BotTradeView({ botConfig, positions, history, handleBotToggle, handleSaveBotSettings, handleOpenConfirmPanic, updateBotConfigDraft, setActiveView, dataLoading = false }: BotTradeViewProps) {
+export function BotTradeView({ botConfig, positions, history, aiWatchlist, handleBotToggle, handleOpenConfirmPanic, setActiveView, dataLoading = false }: BotTradeViewProps) {
   const [tradeHistoryRange, setTradeHistoryRange] = useState<TradeHistoryRange>("30d");
 
   // Strategy Risk Level Logic
@@ -349,18 +295,15 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
   let riskLabel = "เสี่ยงต่ำ (Low Risk)";
   let riskColor = "#00c16a"; // Emerald
   let riskBg = "rgba(0, 193, 106, 0.08)";
-  let riskDescription = "กลยุทธ์จำกัดความเสียหายได้ดี เหมาะสำหรับการเทรดปลอดภัยในระยะยาว";
 
   if (riskScore > 12) {
     riskLabel = "เสี่ยงสูงมาก (High Speculative)";
     riskColor = "#ef5b63"; // Rose
     riskBg = "rgba(239, 91, 99, 0.08)";
-    riskDescription = "คำเตือน: กลยุทธ์เก็งกำไรสูงมาก";
   } else if (riskScore > 6) {
     riskLabel = "เสี่ยงปานกลาง (Balanced Risk)";
     riskColor = "#fbbf24"; // Amber
     riskBg = "rgba(251, 191, 36, 0.08)";
-    riskDescription = "กลยุทธ์แบบสมดุล มุ่งเน้นการเติบโตอย่างมั่นคงในสภาวะตลาดปกติ";
   }
 
   const modeFilteredHistory = useMemo(() => {
@@ -371,9 +314,19 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
   const filteredHistory = filterHistoryByRange(modeFilteredHistory, tradeHistoryRange);
   const selectedTradeHistoryRange = tradeHistoryRangeOptions.find((option) => option.value === tradeHistoryRange);
 
+  const strategyDisplayName = strategyDisplayNames[botConfig.strategy] || botConfig.strategy?.replace(/_/g, " ") || "multi indicator";
+  const operationStats = [
+    { label: "Strategy", value: strategyDisplayName, color: "text.primary" },
+    { label: "AI Review", value: botConfig.ai_enabled ? "Gemini On" : "Off", color: botConfig.ai_enabled ? "#60a5fa" : "text.secondary" },
+    { label: "Stake", value: `${botConfig.stake_amount_thb} THB`, color: "text.primary" },
+    { label: "Max Trades", value: `${positions.length} / ${maxTrades}`, color: positions.length >= maxTrades ? "#fbbf24" : "text.primary" },
+    { label: "TP / SL", value: `+${botConfig.take_profit_pct}% / ${botConfig.stop_loss_pct}%`, color: "text.primary" },
+    { label: "Budget", value: `${botConfig.max_budget_thb ?? 5000} THB`, color: "text.primary" },
+  ];
+
   return (
-    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "3.8fr 8.2fr" }, gap: 1.25, alignItems: "start" }}>
-      {/* Auto Bot Settings Form */}
+    <Stack spacing={1.25} sx={{ width: "100%", minWidth: 0 }}>
+      {/* Bot Operations Header */}
       <Card
         sx={{
           border: botConfig.is_running
@@ -385,167 +338,67 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
           transition: "all 0.3s ease"
         }}
       >
-        <CardContent sx={{ p: 2.5 }}>
-          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 3 }}>
-            <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", flexWrap: "wrap", gap: 1 }}>
-              <Bot size={18} style={{ color: botConfig.is_running ? "#00c16a" : "#94a3b8", transition: "color 0.3s ease" }} />
-              <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
-                บอทเทรดอัตโนมัติ
-              </Typography>
-              <Chip
-                label={botConfig.dry_run ? "DRY-RUN" : "LIVE"}
-                size="small"
+        <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
+          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(260px, 1.3fr) minmax(0, 3fr) auto" }, gap: 1.25, alignItems: "center" }}>
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1.2, minWidth: 0 }}>
+              <Box sx={{ width: 42, height: 42, borderRadius: "12px", display: "grid", placeItems: "center", color: botConfig.is_running ? "#00c16a" : "#94a3b8", backgroundColor: botConfig.is_running ? "rgba(0, 193, 106, 0.1)" : "rgba(148, 163, 184, 0.08)", border: botConfig.is_running ? "1px solid rgba(0, 193, 106, 0.2)" : "1px solid rgba(148, 163, 184, 0.14)", flexShrink: 0 }}>
+                <Bot size={20} />
+              </Box>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.96rem", sm: "1.04rem" }, color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
+                  บอทเทรดอัตโนมัติ
+                </Typography>
+                <Stack direction="row" spacing={0.65} sx={{ mt: 0.55, alignItems: "center", flexWrap: "wrap", gap: 0.65 }}>
+                  <Chip size="small" label={botConfig.is_running ? "RUNNING" : "STOPPED"} sx={{ height: 20, fontSize: "10px", fontWeight: 800, color: botConfig.is_running ? "#00c16a" : "text.secondary", backgroundColor: botConfig.is_running ? "rgba(0, 193, 106, 0.1)" : "rgba(255,255,255,0.035)", border: botConfig.is_running ? "1px solid rgba(0, 193, 106, 0.2)" : "1px solid rgba(255,255,255,0.06)" }} />
+                  <Chip size="small" label={botConfig.dry_run ? "DRY-RUN" : "LIVE"} sx={{ height: 20, fontSize: "10px", fontWeight: 800, color: botConfig.dry_run ? "#94a3b8" : "#00c16a", backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.08)" : "rgba(0, 193, 106, 0.1)", border: botConfig.dry_run ? "1px solid rgba(148, 163, 184, 0.14)" : "1px solid rgba(0, 193, 106, 0.2)" }} />
+                  <Chip size="small" label={riskLabel} sx={{ height: 20, fontSize: "10px", fontWeight: 700, color: riskColor, backgroundColor: riskBg, border: `1px solid ${riskColor}24` }} />
+                </Stack>
+              </Box>
+            </Box>
+
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", md: "repeat(3, minmax(0, 1fr))", xl: "repeat(6, minmax(0, 1fr))" }, gap: 0.75 }}>
+              {operationStats.map((item) => (
+                <Box key={item.label} sx={{ minHeight: 54, p: 1, borderRadius: "10px", backgroundColor: "rgba(2, 6, 23, 0.36)", border: "1px solid rgba(255, 255, 255, 0.045)", minWidth: 0 }}>
+                  <Typography sx={{ color: "text.secondary", fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", lineHeight: 1.1 }}>
+                    {item.label}
+                  </Typography>
+                  <Typography sx={{ mt: 0.55, color: item.color, fontSize: "0.82rem", fontWeight: 700, fontFamily: "Outfit, monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {item.value}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
+
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: { xs: "space-between", lg: "flex-end" }, gap: 1 }}>
+              <Button
+                variant="outlined"
+                onClick={() => setActiveView && setActiveView("settings")}
                 sx={{
-                  fontSize: "11.5px",
-                  fontWeight: 500,
-                  backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.1)" : "rgba(0, 193, 106, 0.12)",
-                  color: botConfig.dry_run ? "#94a3b8" : "primary.main",
-                  border: botConfig.dry_run ? "1px solid rgba(148, 163, 184, 0.2)" : "1px solid rgba(0, 193, 106, 0.2)",
-                  height: "19px"
+                  height: 38,
+                  px: 1.5,
+                  fontSize: "0.78rem",
+                  fontWeight: 700,
+                  borderColor: "rgba(255, 255, 255, 0.08)",
+                  color: "text.primary",
+                  borderRadius: "10px",
+                  textTransform: "none",
+                  whiteSpace: "nowrap",
+                  "&:hover": {
+                    borderColor: "rgba(255, 255, 255, 0.2)",
+                    backgroundColor: "rgba(255, 255, 255, 0.03)",
+                  }
                 }}
-              />
-              <Chip
-                label={`โควตาไม้: ${positions.length} / ${maxTrades}`}
-                size="small"
-                sx={{
-                  fontSize: "11.5px",
-                  fontWeight: 600,
-                  backgroundColor: positions.length > 0 ? "rgba(59, 130, 246, 0.08)" : "rgba(255, 255, 255, 0.03)",
-                  color: positions.length > 0 ? "#60a5fa" : "text.secondary",
-                  border: "1px solid rgba(255, 255, 255, 0.05)",
-                  height: "19px"
-                }}
-              />
-            </Stack>
-            <Switch
-              checked={botConfig.is_running}
-              onChange={handleBotToggle}
-              color="primary"
-            />
+              >
+                Settings
+              </Button>
+              <Switch checked={botConfig.is_running} onChange={handleBotToggle} color="primary" />
+            </Box>
           </Box>
-
-          <Stack spacing={1.5}>
-            {/* Read-Only Configuration Summary Panel */}
-            <Box
-              sx={{
-                display: "grid",
-                gridTemplateColumns: "repeat(2, 1fr)",
-                gap: 1.5,
-                p: 2,
-                borderRadius: "14px",
-                backgroundColor: "rgba(2, 6, 23, 0.45)",
-                border: "1px solid rgba(255, 255, 255, 0.04)"
-              }}
-            >
-              <Box sx={{ gridColumn: "span 2" }}>
-                <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.5 }}>
-                  งบลงทุนสูงสุดของบอท (Max Budget)
-                </Typography>
-                <Typography sx={{ fontSize: "0.95rem", fontWeight: 600, color: "text.primary", fontFamily: "monospace" }}>
-                  {botConfig.max_budget_thb ?? 5000} THB
-                </Typography>
-              </Box>
-
-              <Box>
-                <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.5 }}>
-                  จำนวนไม้สูงสุด
-                </Typography>
-                <Typography sx={{ fontSize: "0.95rem", fontWeight: 600, color: "text.primary", fontFamily: "monospace" }}>
-                  {botConfig.max_open_trades} ไม้
-                </Typography>
-              </Box>
-
-              <Box>
-                <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.5 }}>
-                  เงินทุนต่อไม้
-                </Typography>
-                <Typography sx={{ fontSize: "0.95rem", fontWeight: 600, color: "text.primary", fontFamily: "monospace" }}>
-                  {botConfig.stake_amount_thb} THB
-                </Typography>
-              </Box>
-
-              <Box>
-                <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.5 }}>
-                  Stop Loss (SL)
-                </Typography>
-                <Typography sx={{ fontSize: "0.95rem", fontWeight: 600, color: "#ef5b63", fontFamily: "monospace" }}>
-                  {botConfig.stop_loss_pct}%
-                </Typography>
-              </Box>
-
-              <Box>
-                <Typography sx={{ fontSize: "0.75rem", fontWeight: 500, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 0.5 }}>
-                  Take Profit (TP)
-                </Typography>
-                <Typography sx={{ fontSize: "0.95rem", fontWeight: 600, color: "#00c16a", fontFamily: "monospace" }}>
-                  +{botConfig.take_profit_pct}%
-                </Typography>
-              </Box>
-            </Box>
-
-            {/* Dynamic Risk Level Evaluation UI Panel */}
-            <Paper sx={{
-              p: 2,
-              borderRadius: "14px",
-              backgroundColor: riskBg,
-              border: `1px solid ${riskColor}15`,
-              display: "flex",
-              flexDirection: "column",
-              gap: 1
-            }}>
-              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <Typography sx={{ fontSize: "0.78rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                  ระดับความเสี่ยงกลยุทธ์
-                </Typography>
-                <Chip
-                  label={riskLabel}
-                  size="small"
-                  sx={{
-                    backgroundColor: "rgba(255, 255, 255, 0.02)",
-                    color: riskColor,
-                    border: `1px solid ${riskColor}30`,
-                    fontSize: "10px",
-                    fontWeight: 850,
-                    height: "19px"
-                  }}
-                />
-              </Box>
-              <Typography sx={{ fontSize: "0.82rem", color: "text.primary", fontWeight: 600, mt: 0.5 }}>
-                {riskDescription}
-              </Typography>
-            </Paper>
-
-            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
-              <Chip size="small" label="LONG ONLY" color="success" variant="outlined" sx={{ fontWeight: 600, fontSize: "10px" }} />
-              <Chip size="small" label="SPOT MARKET" variant="outlined" sx={{ fontWeight: 600, fontSize: "10px", borderColor: "rgba(255,255,255,0.12)" }} />
-              <Chip size="small" label="LEVERAGE 1x" variant="outlined" sx={{ fontWeight: 600, fontSize: "10px", borderColor: "rgba(255,255,255,0.12)" }} />
-            </Box>
-
-            <Button
-              fullWidth
-              variant="outlined"
-              onClick={() => setActiveView && setActiveView("settings")}
-              sx={{
-                py: 1.2,
-                fontSize: "0.85rem",
-                fontWeight: 600,
-                borderColor: "rgba(255, 255, 255, 0.08)",
-                color: "text.primary",
-                borderRadius: "12px",
-                "&:hover": {
-                  borderColor: "rgba(255, 255, 255, 0.2)",
-                  backgroundColor: "rgba(255, 255, 255, 0.02)",
-                }
-              }}
-            >
-              ⚙️ ปรับแต่งการตั้งค่าบอท
-            </Button>
-          </Stack>
         </CardContent>
       </Card>
 
-      {/* Right Column: Positions */}
-      <Stack spacing={1.25} sx={{ flex: 1, minWidth: 0 }}>
+      {/* Operations Data */}
+      <Stack spacing={1.25} sx={{ minWidth: 0 }}>
         {/* Active Positions Table Card */}
         <Card>
           <CardContent sx={{ p: 2.5 }}>
@@ -669,6 +522,126 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
                             >
                               Panic Sell
                             </Button>
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent sx={{ p: 2.5 }}>
+            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid rgba(255,255,255,0.05)", pb: 2, mb: 2 }}>
+              <Box>
+                <Typography sx={{ fontWeight: 600, fontSize: "0.9rem", letterSpacing: "0.05em", textTransform: "uppercase", color: "text.primary" }}>
+                  AI Watchlist
+                </Typography>
+                <Typography sx={{ color: "text.secondary", fontSize: "0.76rem", mt: 0.35 }}>
+                  สัญญาณที่ Gemini วิเคราะห์ไว้ก่อนตัดสินใจซื้อ
+                </Typography>
+              </Box>
+              <Brain size={18} style={{ color: "#60a5fa" }} />
+            </Box>
+
+            {!botConfig.ai_enabled ? (
+              <Box sx={{ py: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                <Brain size={32} style={{ color: "rgba(255,255,255,0.15)" }} />
+                <Typography sx={{ color: "text.secondary", fontSize: "0.85rem" }}>
+                  AI Signal Review ยังไม่ได้เปิดใช้งาน
+                </Typography>
+              </Box>
+            ) : dataLoading ? (
+              <Box sx={{ py: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1.5 }}>
+                <CircularProgress size={24} thickness={4} />
+                <Typography sx={{ color: "text.secondary", fontSize: "0.82rem" }}>
+                  กำลังโหลด AI watchlist...
+                </Typography>
+              </Box>
+            ) : aiWatchlist.length === 0 ? (
+              <Box sx={{ py: 4, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 1 }}>
+                <Inbox size={32} style={{ color: "rgba(255,255,255,0.15)" }} />
+                <Typography sx={{ color: "text.secondary", fontSize: "0.85rem" }}>
+                  ยังไม่มีสัญญาณที่ AI วิเคราะห์ไว้
+                </Typography>
+              </Box>
+            ) : (
+              <TableContainer>
+                <Table size="small">
+                  <TableHead>
+                    <TableRow>
+                      <TableCell sx={{ pl: 0 }}>คู่เหรียญ</TableCell>
+                      <TableCell align="center">ผล AI</TableCell>
+                      <TableCell align="center" sx={{ display: { xs: "none", sm: "table-cell" } }}>สถานะ</TableCell>
+                      <TableCell align="right">คะแนน</TableCell>
+                      <TableCell align="right" sx={{ display: { xs: "none", md: "table-cell" } }}>ราคา</TableCell>
+                      <TableCell sx={{ pr: 0 }}>เหตุผล</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {aiWatchlist.slice(0, 8).map((item) => {
+                      const decision = (item.decision || "watch").toLowerCase();
+                      const decisionColor = decision === "buy" ? "#00c16a" : decision === "skip" ? "#ef5b63" : "#fbbf24";
+                      return (
+                        <TableRow key={item.id}>
+                          <TableCell sx={{ pl: 0 }}>
+                            <Typography sx={{ fontWeight: 700, fontSize: "0.84rem" }}>{item.symbol}</Typography>
+                            <Typography sx={{ color: "text.secondary", fontSize: "0.68rem", fontFamily: "monospace" }}>
+                              {item.created_at}
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="center">
+                            <Chip
+                              size="small"
+                              label={decision.toUpperCase()}
+                              sx={{
+                                height: 20,
+                                fontSize: "9px",
+                                fontWeight: 700,
+                                color: decisionColor,
+                                backgroundColor: `${decisionColor}12`,
+                                border: `1px solid ${decisionColor}33`,
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell align="center" sx={{ display: { xs: "none", sm: "table-cell" } }}>
+                            <Chip
+                              size="small"
+                              label={(item.status || "active").toUpperCase()}
+                              sx={{
+                                height: 19,
+                                fontSize: "9px",
+                                fontWeight: 700,
+                                color: item.status === "used" ? "#00c16a" : item.status === "skipped" ? "#ef5b63" : "text.secondary",
+                                backgroundColor: "rgba(255,255,255,0.025)",
+                                border: "1px solid rgba(255,255,255,0.06)",
+                              }}
+                            />
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontFamily: "monospace", fontWeight: 700, color: "text.primary" }}>
+                            {item.score}
+                            <Typography component="span" sx={{ color: "text.secondary", fontSize: "0.7rem", ml: 0.35 }}>
+                              /100
+                            </Typography>
+                            <Typography sx={{ color: "text.secondary", fontSize: "0.68rem", lineHeight: 1.2 }}>
+                              {(item.confidence * 100).toFixed(0)}%
+                            </Typography>
+                          </TableCell>
+                          <TableCell align="right" sx={{ display: { xs: "none", md: "table-cell" }, fontFamily: "monospace", color: "text.secondary", fontSize: "0.8rem" }}>
+                            {item.last_price ? item.last_price.toLocaleString(undefined, { minimumFractionDigits: 2 }) : "-"}
+                          </TableCell>
+                          <TableCell sx={{ pr: 0, maxWidth: 260 }}>
+                            <Typography title={item.reason} sx={{ color: "text.secondary", fontSize: "0.75rem", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                              {item.reason || "-"}
+                            </Typography>
+                            {item.replace_candidate && (
+                              <Typography sx={{ color: "#60a5fa", fontSize: "0.68rem", mt: 0.25 }}>
+                                replace: {item.replace_candidate}
+                              </Typography>
+                            )}
                           </TableCell>
                         </TableRow>
                       );
@@ -862,6 +835,6 @@ export function BotTradeView({ botConfig, positions, history, handleBotToggle, h
           )}
         </CardContent>
       </Card>
-    </Box>
+    </Stack>
   );
 }
