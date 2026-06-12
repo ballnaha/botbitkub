@@ -57,6 +57,11 @@ BITKUB_HOST = "https://api.bitkub.com"
 
 bitkub_http = requests.Session()
 bitkub_http.trust_env = False
+bitkub_http.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+})
 
 # Helper to check if credentials are valid placeholder values
 def are_credentials_placeholder(api_key, api_secret):
@@ -988,6 +993,7 @@ class CredentialsUpdateRequest(BaseModel):
     api_key: str = None
     api_secret: str = None
     gemini_api_key: str = None
+    deepseek_api_key: str = None
 
 def update_env_file(updates: dict):
     env_path = ".env"
@@ -1019,11 +1025,13 @@ async def get_credentials():
     api_key = os.getenv("BITKUB_API_KEY", "")
     api_secret = os.getenv("BITKUB_API_SECRET", "")
     gemini_api_key = os.getenv("GEMINI_API_KEY", "")
+    deepseek_api_key = os.getenv("DEEPSEEK_API_KEY", "")
     
     # Mask values
     masked_key = api_key[:6] + "..." + api_key[-4:] if len(api_key) > 10 else "not set" if not api_key else "configured"
     masked_secret = api_secret[:6] + "..." + api_secret[-4:] if len(api_secret) > 10 else "not set" if not api_secret else "configured"
     masked_gemini_key = gemini_api_key[:6] + "..." + gemini_api_key[-4:] if len(gemini_api_key) > 10 else "not set" if not gemini_api_key else "configured"
+    masked_deepseek_key = deepseek_api_key[:6] + "..." + deepseek_api_key[-4:] if len(deepseek_api_key) > 10 else "not set" if not deepseek_api_key else "configured"
     
     return {
         "status": "success",
@@ -1031,7 +1039,9 @@ async def get_credentials():
         "api_key_masked": masked_key,
         "api_secret_masked": masked_secret,
         "gemini_api_key_masked": masked_gemini_key,
+        "deepseek_api_key_masked": masked_deepseek_key,
         "has_gemini_api_key": bool(gemini_api_key),
+        "has_deepseek_api_key": bool(deepseek_api_key),
         "has_api_key": bool(api_key and not are_credentials_placeholder(api_key, api_secret))
     }
 
@@ -1048,6 +1058,8 @@ async def update_credentials(req: CredentialsUpdateRequest):
         updates["BITKUB_API_SECRET"] = req.api_secret.strip()
     if req.gemini_api_key is not None and req.gemini_api_key.strip():
         updates["GEMINI_API_KEY"] = req.gemini_api_key.strip()
+    if req.deepseek_api_key is not None and req.deepseek_api_key.strip():
+        updates["DEEPSEEK_API_KEY"] = req.deepseek_api_key.strip()
         
     if updates:
         try:

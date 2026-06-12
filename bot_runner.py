@@ -20,6 +20,11 @@ load_dotenv()
 
 bitkub_http = requests.Session()
 bitkub_http.trust_env = False
+bitkub_http.headers.update({
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
+})
 
 # ข้อมูลการตั้งค่าบอทเริ่มต้น
 BOT_CONFIG_FILE = "bot_config.json"
@@ -622,26 +627,29 @@ class BotRunner:
             "to": now_ts
         }
         
-        try:
-            r = bitkub_http.get(url, params=params, timeout=10)
-            if r.status_code == 200:
-                data = r.json()
-                if data.get("s") == "ok":
-                    df = pd.DataFrame({
-                        "timestamp": data.get("t"),
-                        "open": data.get("o"),
-                        "high": data.get("h"),
-                        "low": data.get("l"),
-                        "close": data.get("c"),
-                        "volume": data.get("v")
-                    })
-                    # แปลงค่าตัวเลขเป็น float
-                    for col in ["open", "high", "low", "close", "volume"]:
-                        df[col] = df[col].astype(float)
-                    return df
-            self.add_log(f"Failed to fetch candles for {symbol}. Code: {r.status_code}")
-        except Exception as e:
-            self.add_log(f"Error fetching candles for {symbol}: {str(e)}")
+        for attempt in range(3):
+            try:
+                r = bitkub_http.get(url, params=params, timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("s") == "ok":
+                        df = pd.DataFrame({
+                            "timestamp": data.get("t"),
+                            "open": data.get("o"),
+                            "high": data.get("h"),
+                            "low": data.get("l"),
+                            "close": data.get("c"),
+                            "volume": data.get("v")
+                        })
+                        # แปลงค่าตัวเลขเป็น float
+                        for col in ["open", "high", "low", "close", "volume"]:
+                            df[col] = df[col].astype(float)
+                        return df
+                self.add_log(f"Failed to fetch candles for {symbol} (Attempt {attempt+1}/3). Code: {r.status_code}")
+            except Exception as e:
+                self.add_log(f"Error fetching candles for {symbol} (Attempt {attempt+1}/3): {str(e)}")
+            if attempt < 2:
+                time.sleep(1.5)
         return pd.DataFrame()
 
     # ลูปหลักทำงานทุกๆ 60 วินาที
@@ -786,8 +794,9 @@ class BotRunner:
         if not self.config.get("ai_enabled", False):
             return None
 
-        if not self.ai_analyzer.is_configured():
-            self.add_log(f"🤖 [AI Review] GEMINI_API_KEY is not configured. Skip buy for {symbol}.")
+        if not self.ai_analyzer.is_configured(self.config):
+            provider = self.config.get("ai_provider", "gemini").upper()
+            self.add_log(f"🤖 [AI Review] {provider}_API_KEY is not configured. Skip buy for {symbol}.")
             return None
 
         try:

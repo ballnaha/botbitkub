@@ -40,6 +40,7 @@ import {
   Key,
 } from "lucide-react";
 import type { BotConfig, StrategyInfo } from "./dashboardTypes";
+import { GeminiLogo, DeepSeekLogo } from "./Logos";
 
 interface SettingsViewProps {
   botConfig: BotConfig;
@@ -145,9 +146,11 @@ export function SettingsView({
   const [apiKey, setApiKey] = useState("");
   const [apiSecret, setApiSecret] = useState("");
   const [geminiApiKey, setGeminiApiKey] = useState("");
+  const [deepseekApiKey, setDeepseekApiKey] = useState("");
   const [maskedKey, setMaskedKey] = useState("");
   const [maskedSecret, setMaskedSecret] = useState("");
   const [maskedGeminiKey, setMaskedGeminiKey] = useState("");
+  const [maskedDeepseekKey, setMaskedDeepseekKey] = useState("");
   const [credLoading, setCredLoading] = useState(false);
   const [credSaveLoading, setCredSaveLoading] = useState(false);
 
@@ -162,6 +165,7 @@ export function SettingsView({
           setMaskedKey(data.api_key_masked || "");
           setMaskedSecret(data.api_secret_masked || "");
           setMaskedGeminiKey(data.gemini_api_key_masked || "");
+          setMaskedDeepseekKey(data.deepseek_api_key_masked || "");
         }
       }
     } catch (err) {
@@ -190,6 +194,7 @@ export function SettingsView({
           api_key: apiKey || undefined,
           api_secret: apiSecret || undefined,
           gemini_api_key: geminiApiKey || undefined,
+          deepseek_api_key: deepseekApiKey || undefined,
         }),
       });
       if (res.ok) {
@@ -199,6 +204,7 @@ export function SettingsView({
           setApiKey("");
           setApiSecret("");
           setGeminiApiKey("");
+          setDeepseekApiKey("");
           setDbPassword("");
           fetchCredentials({ silent: true });
         } else {
@@ -214,7 +220,7 @@ export function SettingsView({
     }
   };
 
-  // Fetch available strategies from backend
+  // Fetch available strategies & credentials from backend on mount
   React.useEffect(() => {
     const fetchStrategies = async () => {
       setStrategiesLoading(true);
@@ -233,6 +239,7 @@ export function SettingsView({
       }
     };
     fetchStrategies();
+    fetchCredentials({ silent: true });
   }, []);
 
   const DEFAULT_SYMBOLS = [
@@ -525,1022 +532,1299 @@ export function SettingsView({
               >
                 <Stack spacing={1.5}>
 
-            {/* TAB PANEL 0: Trading Mode */}
-            {tabIndex === 0 && (
-              <Stack spacing={1.5}>
-                <Box>
-                  <Typography
-                    sx={{
-                      fontSize: "0.88rem",
-                      fontWeight: 600,
-                      color: "text.primary",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      mb: 0.5,
-                    }}
-                  >
-                    เลือกโหมดปฏิบัติการบอท (Operation Mode)
-                  </Typography>
-                  <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
-                    สลับระหว่างโหมดเทรดจำลองเพื่อความปลอดภัย หรือต่อตรงกระเป๋าเงินจริงเข้าตลาด
-                  </Typography>
-                </Box>
-
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-                    gap: 1,
-                    p: 0.5,
-                  }}
-                >
-                  {/* Dry Run Option Box */}
-                  <Paper
-                    onClick={() => handleModeChange(true)}
-                    sx={{
-                      p: 2.5,
-                      borderRadius: "16px",
-                      cursor: "pointer",
-                      backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.04)" : "rgba(13, 20, 35, 0.3)",
-                      border: botConfig.dry_run ? "1.5px solid rgba(148, 163, 184, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
-                      boxShadow: botConfig.dry_run ? "0 0 15px rgba(148, 163, 184, 0.05)" : "none",
-                      transition: "all 0.2s ease",
-                      "&:hover": {
-                        borderColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.6)" : "rgba(255, 255, 255, 0.08)",
-                        backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.06)" : "rgba(255, 255, 255, 0.01)",
-                      }
-                    }}
-                  >
+                  {/* TAB PANEL 0: Trading Mode */}
+                  {tabIndex === 0 && (
                     <Stack spacing={1.5}>
-                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: botConfig.dry_run ? "#94a3b8" : "text.secondary" }}>
-                          🧪 Dry-Run Mode
-                        </Typography>
-                        {botConfig.dry_run && <Chip label="ACTIVE" size="small" sx={{ height: 16, fontSize: "9px", fontWeight: 600, backgroundColor: "rgba(148, 163, 184, 0.15)", color: "#94a3b8", border: "1px solid rgba(148, 163, 184, 0.3)" }} />}
-                      </Box>
-                      <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", lineHeight: 1.5 }}>
-                        โหมดจำลองการซื้อขายโดยใช้ยอดเงินและราคาจริงเพื่อทดสอบอัลกอริทึม ปลอดภัย 100% ไม่ส่งคำสั่งซื้อไปยัง Bitkub
-                      </Typography>
-                    </Stack>
-                  </Paper>
-
-                  {/* Live Mode Option Box */}
-                  <Paper
-                    onClick={() => handleModeChange(false)}
-                    sx={{
-                      p: 2.5,
-                      borderRadius: "16px",
-                      cursor: "pointer",
-                      backgroundColor: !botConfig.dry_run ? "rgba(0, 193, 106, 0.03)" : "rgba(13, 20, 35, 0.3)",
-                      border: !botConfig.dry_run ? "1.5px solid rgba(0, 193, 106, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
-                      boxShadow: !botConfig.dry_run ? "0 0 15px rgba(0, 193, 106, 0.05)" : "none",
-                      transition: "all 0.2s ease",
-                      "&:hover": {
-                        borderColor: !botConfig.dry_run ? "rgba(0, 193, 106, 0.6)" : "rgba(255, 255, 255, 0.08)",
-                        backgroundColor: !botConfig.dry_run ? "rgba(0, 193, 106, 0.05)" : "rgba(255, 255, 255, 0.01)",
-                      }
-                    }}
-                  >
-                    <Stack spacing={1.5}>
-                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: !botConfig.dry_run ? "primary.main" : "text.secondary" }}>
-                          ⚡ LIVE Trade Mode
-                        </Typography>
-                        {!botConfig.dry_run && <Chip label="ACTIVE" color="primary" size="small" sx={{ height: 16, fontSize: "9px", fontWeight: 500 }} />}
-                      </Box>
-                      <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", lineHeight: 1.5 }}>
-                        โหมดสั่งซื้อขายด้วยเงินจริงผ่าน API ของท่าน ออร์เดอร์ส่งลงกระดาน Bitkub ทันทีที่มีสัญญาณการซื้อขาย
-                      </Typography>
-                    </Stack>
-                  </Paper>
-                </Box>
-
-                {/* Info Banners */}
-                {botConfig.dry_run ? (
-                  <Alert
-                    severity="info"
-                    icon={<ShieldCheck size={18} />}
-                    sx={{
-                      borderRadius: "14px",
-                      backgroundColor: "rgba(255, 255, 255, 0.015)",
-                      border: "1px solid rgba(255, 255, 255, 0.05)",
-                      color: "text.secondary",
-                      fontSize: "0.82rem",
-                      "& .MuiAlert-icon": { color: "#94a3b8" },
-                    }}
-                  >
-                    <strong>การป้องกันความปลอดภัย:</strong> ระบบแยกพอร์ตการซื้อขายและประวัติประมูลจำลองออกจากเงินจริงเด็ดขาดเพื่อไม่ให้เกิดความสับสน
-                  </Alert>
-                ) : (
-                  <Alert
-                    severity="success"
-                    icon={<ShieldCheck size={18} />}
-                    sx={{
-                      borderRadius: "14px",
-                      backgroundColor: "rgba(0, 193, 106, 0.02)",
-                      border: "1px solid rgba(0, 193, 106, 0.1)",
-                      color: "primary.light",
-                      fontSize: "0.82rem",
-                      "& .MuiAlert-icon": { color: "primary.main" },
-                    }}
-                  >
-                    <strong>การใช้งานเงินจริง:</strong> ระบบกำลังพร้อมเชื่อมตรงบัญชี Bitkub ของท่าน ออร์เดอร์จะถูกซื้อขายด้วยเงินจริงทันทีตามเงื่อนไขที่กำหนด
-                  </Alert>
-                )}
-              </Stack>
-            )}
-
-            {/* TAB PANEL 1: Strategy Selection */}
-            {tabIndex === 1 && (
-              <Stack spacing={1.5}>
-                <Box>
-                  <Typography
-                    sx={{
-                      fontSize: "0.88rem",
-                      fontWeight: 600,
-                      color: "text.primary",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      mb: 0.5,
-                    }}
-                  >
-                    เลือกกลยุทธ์การเทรด (Trading Strategy)
-                  </Typography>
-                  <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
-                    กลยุทธ์กำหนดเงื่อนไขการเข้าซื้อและขายของบอทตามอินดิเคเตอร์ทางเทคนิค สามารถสลับเปลี่ยนได้ตลอดเวลา
-                  </Typography>
-                </Box>
-
-                <Paper
-                  sx={{
-                    p: 1.5,
-                    borderRadius: "14px",
-                    backgroundColor: botConfig.ai_enabled ? "rgba(96, 165, 250, 0.045)" : "rgba(13, 20, 35, 0.3)",
-                    border: botConfig.ai_enabled ? "1px solid rgba(96, 165, 250, 0.22)" : "1px solid rgba(255, 255, 255, 0.04)",
-                  }}
-                >
-                  <Stack spacing={1.25}>
-                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 1 }}>
-                      <Stack direction="row" spacing={1} sx={{ alignItems: "center", minWidth: 0 }}>
-                        <Box sx={{ width: 34, height: 34, borderRadius: "10px", display: "grid", placeItems: "center", color: "#60a5fa", backgroundColor: "rgba(96, 165, 250, 0.12)", flexShrink: 0 }}>
-                          <Brain size={16} />
-                        </Box>
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "text.primary" }}>
-                            AI Signal Review
-                          </Typography>
-                          <Typography sx={{ fontSize: "0.76rem", color: "text.secondary", lineHeight: 1.35 }}>
-                            ให้ AI ช่วยให้คะแนนสัญญาณซื้อหลัง strategy ทำงาน และก่อนบอทส่งคำสั่งซื้อ
-                          </Typography>
-                        </Box>
-                      </Stack>
-                      <Switch
-                        checked={botConfig.ai_enabled}
-                        onChange={(e) => updateBotConfigDraft({ ai_enabled: e.target.checked })}
-                        sx={{
-                          "& .MuiSwitch-switchBase.Mui-checked": { color: "#60a5fa" },
-                          "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#60a5fa" },
-                        }}
-                      />
-                    </Box>
-
-                    {botConfig.ai_enabled && (
-                      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1.1fr 0.75fr 0.75fr" }, gap: 1.2 }}>
-                        <Stack spacing={0.8}>
-                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            AI Model
-                          </Typography>
-                          <TextField
-                            value={botConfig.ai_model || "gemini-3.5-flash"}
-                            onChange={(e) => updateBotConfigDraft({ ai_model: e.target.value })}
-                            size="small"
-                            sx={{
-                              "& input": { fontSize: "0.82rem", color: "#ffffff", fontFamily: "monospace" },
-                              "& .MuiOutlinedInput-root": {
-                                borderRadius: "11px",
-                                backgroundColor: "rgba(2, 6, 23, 0.45)",
-                                "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
-                              },
-                            }}
-                          />
-                        </Stack>
-                        <Stack spacing={0.8}>
-                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            Min Score
-                          </Typography>
-                          <NumberStepper
-                            value={botConfig.ai_min_score ?? 65}
-                            step={5}
-                            min={0}
-                            onChange={(value) => updateBotConfigDraft({ ai_min_score: Math.max(0, Math.min(100, Math.round(value))) })}
-                          />
-                        </Stack>
-                        <Stack spacing={0.8}>
-                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            Confidence
-                          </Typography>
-                          <NumberStepper
-                            value={botConfig.ai_min_confidence ?? 0.55}
-                            step={0.05}
-                            min={0}
-                            onChange={(value) => updateBotConfigDraft({ ai_min_confidence: Math.max(0, Math.min(1, Number(value.toFixed(2)))) })}
-                          />
-                        </Stack>
-                      </Box>
-                    )}
-
-                    {botConfig.ai_enabled && (
-                      <Alert
-                        severity="info"
-                        sx={{
-                          borderRadius: "12px",
-                          backgroundColor: "rgba(96, 165, 250, 0.04)",
-                          border: "1px solid rgba(96, 165, 250, 0.12)",
-                          color: "text.secondary",
-                          fontSize: "0.78rem",
-                          "& .MuiAlert-icon": { color: "#60a5fa" },
-                        }}
-                      >
-                        ตอนนี้ระบบรองรับ Gemini ผ่าน `GEMINI_API_KEY` ในไฟล์ `.env` หาก AI ไม่พร้อมหรือวิเคราะห์ไม่สำเร็จ บอทจะข้ามการซื้อเพื่อความปลอดภัย
-                      </Alert>
-                    )}
-                  </Stack>
-                </Paper>
-
-                {strategiesLoading ? (
-                  <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-                    <Typography sx={{ fontSize: "0.85rem", color: "text.secondary" }}>กำลังโหลดกลยุทธ์...</Typography>
-                  </Box>
-                ) : (
-                  <Stack spacing={0.8}>
-                    {strategies.map((strat) => {
-                      const isActive = (botConfig.strategy || "multi_indicator") === strat.id;
-                      const riskColors: Record<string, { color: string; label: string }> = {
-                        low: { color: "#00c16a", label: "เสี่ยงต่ำ" },
-                        medium: { color: "#fbbf24", label: "เสี่ยงปานกลาง" },
-                        high: { color: "#ef5b63", label: "เสี่ยงสูง" },
-                      };
-                      const risk = riskColors[strat.risk_level] || riskColors.medium;
-
-                      return (
-                        <Paper
-                          key={strat.id}
-                          onClick={() => {
-                            const patch: Partial<BotConfig> = { strategy: strat.id };
-                            if (strat.risk_level === "low") {
-                              patch.ai_min_score = 75;
-                              patch.ai_min_confidence = 0.65;
-                            } else if (strat.risk_level === "medium") {
-                              patch.ai_min_score = 65;
-                              patch.ai_min_confidence = 0.55;
-                            } else if (strat.risk_level === "high") {
-                              patch.ai_min_score = 50;
-                              patch.ai_min_confidence = 0.45;
-                            }
-                            updateBotConfigDraft(patch);
-                          }}
+                      <Box>
+                        <Typography
                           sx={{
-                            p: 1.5,
-                            borderRadius: "12px",
-                            cursor: "pointer",
-                            backgroundColor: isActive ? "rgba(0, 193, 106, 0.03)" : "rgba(13, 20, 35, 0.3)",
-                            border: isActive ? "1.5px solid rgba(0, 193, 106, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
-                            boxShadow: isActive ? "0 0 15px rgba(0, 193, 106, 0.05)" : "none",
-                            transition: "all 0.2s ease",
-                            "&:hover": {
-                              borderColor: isActive ? "rgba(0, 193, 106, 0.6)" : "rgba(255, 255, 255, 0.1)",
-                              backgroundColor: isActive ? "rgba(0, 193, 106, 0.05)" : "rgba(255, 255, 255, 0.015)",
-                            },
+                            fontSize: "0.88rem",
+                            fontWeight: 600,
+                            color: "text.primary",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            mb: 0.5,
                           }}
                         >
-                          <Stack spacing={0.8}>
-                            {/* Header row */}
-                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 0.5 }}>
-                              <Typography sx={{ fontWeight: 600, fontSize: "0.88rem", color: isActive ? "primary.main" : "text.primary" }}>
-                                {strat.name}
-                              </Typography>
-                              <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
-                                <Chip
-                                  label={risk.label}
-                                  size="small"
-                                  sx={{
-                                    height: 18,
-                                    fontSize: "9px",
-                                    fontWeight: 600,
-                                    backgroundColor: `${risk.color}10`,
-                                    color: risk.color,
-                                    border: `1px solid ${risk.color}30`,
-                                  }}
-                                />
-                                {isActive && (
-                                  <Chip
-                                    label="ACTIVE"
-                                    color="primary"
-                                    size="small"
-                                    sx={{ height: 18, fontSize: "9px", fontWeight: 600 }}
-                                  />
-                                )}
-                              </Stack>
-                            </Box>
-
-                            {/* Description */}
-                            <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.45 }}>
-                              {strat.description}
-                            </Typography>
-
-                            {/* Indicators - compact inline */}
-                            <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.4 }}>
-                              {strat.indicators.map((ind) => (
-                                <Chip
-                                  key={ind}
-                                  label={ind}
-                                  size="small"
-                                  sx={{
-                                    height: 18,
-                                    fontSize: "0.65rem",
-                                    fontWeight: 500,
-                                    backgroundColor: "rgba(255, 255, 255, 0.02)",
-                                    color: "text.secondary",
-                                    border: "1px solid rgba(255, 255, 255, 0.05)",
-                                    borderRadius: "5px",
-                                  }}
-                                />
-                              ))}
-                            </Box>
-
-                            {/* Buy/Sell Logic - only show for active strategy */}
-                            {isActive && (
-                              <Box
-                                sx={{
-                                  display: "grid",
-                                  gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-                                  gap: 0.8,
-                                  mt: 0.3,
-                                }}
-                              >
-                                <Box
-                                  sx={{
-                                    p: 1,
-                                    borderRadius: "8px",
-                                    backgroundColor: "rgba(0, 193, 106, 0.02)",
-                                    border: "1px solid rgba(0, 193, 106, 0.06)",
-                                  }}
-                                >
-                                  <Typography sx={{ fontSize: "0.68rem", fontWeight: 600, color: "#00c16a", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.2 }}>
-                                    🟢 ซื้อ
-                                  </Typography>
-                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", lineHeight: 1.35 }}>
-                                    {strat.buy_logic}
-                                  </Typography>
-                                </Box>
-                                <Box
-                                  sx={{
-                                    p: 1,
-                                    borderRadius: "8px",
-                                    backgroundColor: "rgba(239, 91, 99, 0.02)",
-                                    border: "1px solid rgba(239, 91, 99, 0.06)",
-                                  }}
-                                >
-                                  <Typography sx={{ fontSize: "0.68rem", fontWeight: 600, color: "#ef5b63", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.2 }}>
-                                    🔴 ขาย
-                                  </Typography>
-                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", lineHeight: 1.35 }}>
-                                    {strat.sell_logic}
-                                  </Typography>
-                                </Box>
-                              </Box>
-                            )}
-                          </Stack>
-                        </Paper>
-                      );
-                    })}
-                  </Stack>
-                )}
-
-                <Alert
-                  severity="info"
-                  icon={<Info size={16} />}
-                  sx={{
-                    borderRadius: "14px",
-                    backgroundColor: "rgba(255, 255, 255, 0.015)",
-                    border: "1px solid rgba(255, 255, 255, 0.05)",
-                    color: "text.secondary",
-                    fontSize: "0.82rem",
-                    "& .MuiAlert-icon": { color: "#94a3b8" },
-                  }}
-                >
-                  การเปลี่ยนกลยุทธ์จะมีผลในรอบสแกนถัดไปของบอท ตำแหน่งถือครองที่เปิดค้างไว้จะยังคงใช้เกณฑ์ TP/SL ตามปกติ
-                </Alert>
-              </Stack>
-            )}
-
-            {/* TAB PANEL 2: Coin Scanner Setup */}
-            {tabIndex === 2 && (
-              <Stack spacing={1.5}>
-                <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
-                  <Box>
-                    <Typography
-                      sx={{
-                        fontSize: "0.88rem",
-                        fontWeight: 600,
-                        color: "text.primary",
-                        textTransform: "uppercase",
-                        letterSpacing: "0.08em",
-                        mb: 0.5,
-                      }}
-                    >
-                      ลิสต์เป้าหมายสแกน ({botConfig.symbols?.length || 0} เหรียญ)
-                    </Typography>
-                    <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
-                      บอทจะคำนวณสัญญาณทางเทคนิคและสแกนเฉพาะเหรียญที่กำหนดไว้ในรายการนี้เท่านั้น
-                    </Typography>
-                  </Box>
-                  <Button
-                    onClick={handleResetDefaultSymbols}
-                    variant="outlined"
-                    size="small"
-                    sx={{
-                      fontSize: "11px",
-                      fontWeight: 500,
-                      borderColor: "rgba(255,255,255,0.08)",
-                      color: "text.primary",
-                      textTransform: "none",
-                      borderRadius: "9px",
-                      px: 2,
-                      py: 0.5,
-                      "&:hover": { borderColor: "rgba(255,255,255,0.18)", backgroundColor: "rgba(255,255,255,0.02)" }
-                    }}
-                  >
-                    ใช้ค่าเริ่มต้น (18 เหรียญ)
-                  </Button>
-                </Box>
-
-                {/* Active Coins Section */}
-                <Box 
-                  sx={{ 
-                    display: "flex", 
-                    flexWrap: "wrap", 
-                    gap: 1, 
-                    p: 2, 
-                    borderRadius: "16px", 
-                    backgroundColor: "rgba(2, 6, 23, 0.45)", 
-                    border: "1px solid rgba(255, 255, 255, 0.03)",
-                    minHeight: "100px",
-                    alignContent: "flex-start",
-                  }}
-                >
-                  {(!botConfig.symbols || botConfig.symbols.length === 0) ? (
-                    <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", m: "auto" }}>
-                      ไม่มีเหรียญเปิดสแกนขณะนี้ กรุณาพิมพ์เพิ่มอย่างน้อย 1 คู่เหรียญ
-                    </Typography>
-                  ) : (
-                    botConfig.symbols.map((sym) => (
-                      <Chip
-                        key={sym}
-                        label={sym}
-                        onDelete={() => handleDeleteSymbol(sym)}
-                        size="small"
-                        sx={{
-                          fontWeight: 500,
-                          fontSize: "0.8rem",
-                          border: "1px solid rgba(255,255,255,0.06)",
-                          backgroundColor: "rgba(255,255,255,0.02)",
-                          color: "text.primary",
-                          borderRadius: "9px",
-                          transition: "all 0.15s ease",
-                          "&:hover": {
-                            backgroundColor: "rgba(239, 91, 99, 0.05)",
-                            borderColor: "rgba(239, 91, 99, 0.2)",
-                          },
-                          "& .MuiChip-deleteIcon": {
-                            color: "rgba(255, 255, 255, 0.3)",
-                            fontSize: "14px",
-                            "&:hover": { color: "#ef5b63" }
-                          }
-                        }}
-                      />
-                    ))
-                  )}
-                </Box>
-
-                {/* Coin Input Form */}
-                <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 1, alignItems: "center" }}>
-                  <Autocomplete
-                    options={availableSymbolsToAdd}
-                    value={selectedSymbolToAdd}
-                    onChange={(_, newValue) => setSelectedSymbolToAdd(newValue)}
-                    size="small"
-                    autoHighlight
-                    clearOnEscape
-                    slotProps={{
-                      paper: {
-                        sx: {
-                          backgroundColor: "#0d1321",
-                          border: "1px solid rgba(255, 255, 255, 0.08)",
-                          color: "text.primary",
-                          "& .MuiAutocomplete-option": {
-                            fontSize: "0.88rem",
-                            color: "text.primary",
-                            "&[aria-selected='true']": {
-                              backgroundColor: "rgba(0, 193, 106, 0.15)",
-                            },
-                            "&.Mui-focused, &[data-focus='true']": {
-                              backgroundColor: "rgba(255, 255, 255, 0.05)",
-                            },
-                            "&:hover": {
-                              backgroundColor: "rgba(0, 193, 106, 0.08)",
-                            }
-                          }
-                        }
-                      }
-                    }}
-                    renderInput={(params) => (
-                      <TextField 
-                        {...params} 
-                        label="ค้นหาคู่เหรียญเพื่อสแกนเพิ่ม (เช่น ADA/THB)" 
-                        variant="outlined"
-                        sx={{
-                          "& label": { fontSize: "0.82rem", color: "text.secondary" },
-                          "& input": { fontSize: "0.88rem", color: "text.primary" },
-                          "& .MuiOutlinedInput-root": {
-                            borderRadius: "12px",
-                            "& fieldset": { borderColor: "rgba(255, 255, 255, 0.08)" },
-                            "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
-                          }
-                        }}
-                      />
-                    )}
-                    sx={{ width: "100%" }}
-                  />
-                  <Button
-                    onClick={handleAddSymbol}
-                    disabled={!selectedSymbolToAdd}
-                    variant="contained"
-                    sx={{
-                      py: 1.1,
-                      px: 3,
-                      height: "40px",
-                      fontSize: "0.85rem",
-                      fontWeight: 600,
-                      borderRadius: "12px",
-                      backgroundColor: "primary.main",
-                      color: "#17201a",
-                      "&:hover": { backgroundColor: "primary.light" },
-                      "&.Mui-disabled": {
-                        backgroundColor: "rgba(255, 255, 255, 0.05)",
-                        color: "text.disabled"
-                      }
-                    }}
-                  >
-                    เพิ่มคู่เหรียญ
-                  </Button>
-                </Box>
-
-                {/* Suggested Section */}
-                {suggestedCoins.length > 0 && (
-                  <Stack spacing={1}>
-                    <Typography sx={{ fontSize: "0.78rem", fontWeight: 500, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      คู่เหรียญยอดนิยมแนะนำเพื่อสแกนเพิ่ม (Suggested Coins)
-                    </Typography>
-                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-                      {suggestedCoins.slice(0, 10).map((coin) => (
-                        <Chip
-                          key={coin}
-                          label={`+ ${coin}`}
-                          onClick={() => {
-                            const updated = [...(botConfig.symbols || []), coin];
-                            updateBotConfigDraft({ symbols: updated });
-                          }}
-                          size="small"
-                          sx={{
-                            fontSize: "0.75rem",
-                            fontWeight: 500,
-                            backgroundColor: "rgba(255,255,255,0.02)",
-                            color: "text.secondary",
-                            border: "1px solid rgba(255,255,255,0.04)",
-                            borderRadius: "6px",
-                            cursor: "pointer",
-                            "&:hover": {
-                              backgroundColor: "rgba(0, 193, 106, 0.08)",
-                              borderColor: "rgba(0, 193, 106, 0.15)",
-                              color: "primary.main"
-                            }
-                          }}
-                        />
-                      ))}
-                    </Box>
-                  </Stack>
-                )}
-              </Stack>
-            )}
-
-            {/* TAB PANEL 3: Strategy Parameters */}
-            {tabIndex === 3 && (
-              <Stack spacing={1.5}>
-                <Box>
-                  <Typography
-                    sx={{
-                      fontSize: "0.88rem",
-                      fontWeight: 600,
-                      color: "text.primary",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      mb: 0.5,
-                    }}
-                  >
-                    พารามิเตอร์เทรด & การคุมเสี่ยง (Strategy Parameters)
-                  </Typography>
-                  <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
-                    ปรับการคำนวณวงเงินต่อออร์เดอร์ ไม้ถือครองสูงสุด ขอบเขตการทำกำไรและควบคุมความสูญเสีย
-                  </Typography>
-                </Box>
-
-                <Box
-                  sx={{
-                    display: "grid",
-                    gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-                    gap: 1.5
-                  }}
-                >
-                  <Stack spacing={1} sx={{ gridColumn: { sm: "span 2" } }}>
-                    <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      งบลงทุนของบอทสูงสุด (Max Budget THB)
-                    </Typography>
-                    <NumberStepper
-                      value={botConfig.max_budget_thb ?? 5000}
-                      step={100}
-                      min={100}
-                      suffix="THB"
-                      onChange={(value) => updateBotConfigDraft({ max_budget_thb: value })}
-                    />
-                    <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
-                      จำกัดงบประมาณรวมสูงสุดที่บอทใช้ซื้อเหรียญถือครองพร้อมกันทั้งหมด เพื่อความปลอดภัยป้องกันไม่ให้บอทเทรดจนเกินงบที่ต้องการ
-                    </Typography>
-                  </Stack>
-
-                  <Stack spacing={1}>
-                    <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      เงินทุนต่อไม้ (Stake Amount)
-                    </Typography>
-                    <NumberStepper
-                      value={botConfig.stake_amount_thb ?? 100}
-                      step={1}
-                      min={10}
-                      suffix="THB"
-                      onChange={(value) => updateBotConfigDraft({ stake_amount_thb: value })}
-                    />
-                    <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
-                      จำกัดงบประมาณต่อออร์เดอร์ที่ใช้เปิดตำแหน่ง
-                    </Typography>
-                  </Stack>
-
-                  <Stack spacing={1}>
-                    <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      จำนวนไม้เทรดสูงสุด (Max Open Trades)
-                    </Typography>
-                    <NumberStepper
-                      value={botConfig.max_open_trades ?? 3}
-                      step={1}
-                      min={1}
-                      onChange={(value) => updateBotConfigDraft({ max_open_trades: Math.max(1, Math.round(value)) })}
-                    />
-                    <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
-                      จำกัดจำนวนเหรียญที่ถือครองพร้อมกันทั้งหมด
-                    </Typography>
-                  </Stack>
-
-                  <Stack spacing={1}>
-                    <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      เป้าหมายกำไร (Take Profit)
-                    </Typography>
-                    <NumberStepper
-                      value={botConfig.take_profit_pct ?? 10}
-                      step={1}
-                      min={0.1}
-                      suffix="%"
-                      onChange={(value) => updateBotConfigDraft({ take_profit_pct: value })}
-                    />
-                    <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
-                      ระบบทำการขายเก็บกำไรเมื่อราคาสูงขึ้นถึงเกณฑ์เป้าหมายนี้
-                    </Typography>
-                  </Stack>
-
-                  <Stack spacing={1}>
-                    <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      ขีดจำกัดการขาดทุน (Stop Loss)
-                    </Typography>
-                    <NumberStepper
-                      value={botConfig.stop_loss_pct ?? -5}
-                      step={1}
-                      suffix="%"
-                      onChange={(value) => updateBotConfigDraft({ stop_loss_pct: value })}
-                    />
-                    <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
-                      ระบบตัดสินใจคัตขายขาดทุนเมื่อราคาดิ่งลงต่ำกว่าต้นทุน
-                    </Typography>
-                  </Stack>
-                </Box>
-
-                {/* Advanced Risk Evaluation Card */}
-                <Paper
-                  sx={{
-                    p: 2.5,
-                    borderRadius: "16px",
-                    backgroundColor: riskBg,
-                    border: `1px solid ${riskColor}20`,
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 1,
-                    transition: "all 0.25s ease",
-                  }}
-                >
-                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                      <Activity size={15} style={{ color: riskColor }} />
-                      <Typography sx={{ fontSize: "0.78rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                        ประเมินระดับความเสี่ยงตามตั้งค่าปัจจุบัน
-                      </Typography>
-                    </Stack>
-                    <Chip
-                      label={riskLabel}
-                      size="small"
-                      sx={{
-                        backgroundColor: "rgba(255,255,255,0.02)",
-                        color: riskColor,
-                        border: `1px solid ${riskColor}30`,
-                        fontSize: "10px",
-                        fontWeight: 500,
-                        height: "20px"
-                      }}
-                    />
-                  </Box>
-                  <Typography sx={{ fontSize: "0.85rem", color: "text.primary", fontWeight: 600 }}>
-                    {riskDescription}
-                  </Typography>
-                  <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.45 }}>
-                    บอทเปิดระบบปฏิบัติการบน Bitkub Spot ตลาดไม่มีกลไกเลเวอเรจขาลงและไม่มีความเสี่ยงด้านการล้างพอร์ต (Liquidation) ทิศทางการซื้อขายเป็น LONG ONLY (ซื้อตอนต่ำเพื่อขายตอนสูง) เท่านั้น การจำกัดไม้และกรอบ TP/SL ถือเป็นหัวใจการประคองมูลค่าพอร์ตหลัก
-                  </Typography>
-                </Paper>
-              </Stack>
-            )}
-
-            {/* TAB PANEL 4: API & Password Credentials */}
-            {tabIndex === 4 && (
-              <Stack spacing={2}>
-                <Box>
-                  <Typography
-                    sx={{
-                      fontSize: "0.88rem",
-                      fontWeight: 600,
-                      color: "text.primary",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      mb: 0.5,
-                    }}
-                  >
-                    ตั้งค่าการเชื่อมต่อ Bitkub API & บัญชีผู้ใช้
-                  </Typography>
-                  <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
-                    ตั้งค่า API Key และรหัสความปลอดภัยสำหรับการทำงานแบบ LIVE และอัปเดตชื่อผู้ใช้/รหัสผ่านระบบแดชบอร์ด
-                  </Typography>
-                </Box>
-
-
-
-                {credLoading ? (
-                  <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
-                    <CircularProgress size={24} sx={{ color: "primary.main" }} />
-                  </Box>
-                ) : (
-                  <form onSubmit={handleUpdateCredentials}>
-                    <Stack spacing={2.5}>
-                      <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
-                        {/* API Key */}
-                        <Stack spacing={1}>
-                          <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            Bitkub API Key
-                          </Typography>
-                          <TextField
-                            placeholder={maskedKey || "กรุณากรอก API Key"}
-                            value={apiKey}
-                            onChange={(e) => setApiKey(e.target.value)}
-                            size="small"
-                            variant="outlined"
-                            sx={{
-                              "& input": { fontSize: "0.85rem", color: "#ffffff", fontFamily: "monospace" },
-                              "& .MuiOutlinedInput-root": {
-                                borderRadius: "12px",
-                                backgroundColor: "rgba(2, 6, 23, 0.45)",
-                                "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
-                                "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
-                              }
-                            }}
-                          />
-                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
-                            คีย์สาธารณะเพื่อดึงข้อมูลบาลานซ์กระเป๋าและประวัติเทรด
-                          </Typography>
-                        </Stack>
-
-                        {/* API Secret */}
-                        <Stack spacing={1}>
-                          <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            Bitkub API Secret
-                          </Typography>
-                          <TextField
-                            type="password"
-                            placeholder={maskedSecret || "กรุณากรอก API Secret"}
-                            value={apiSecret}
-                            onChange={(e) => setApiSecret(e.target.value)}
-                            size="small"
-                            variant="outlined"
-                            sx={{
-                              "& input": { fontSize: "0.85rem", color: "#ffffff" },
-                              "& .MuiOutlinedInput-root": {
-                                borderRadius: "12px",
-                                backgroundColor: "rgba(2, 6, 23, 0.45)",
-                                "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
-                                "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
-                              }
-                            }}
-                          />
-                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
-                            รหัสคู่กับ API Key สำหรับยืนยันตัวตนส่งคำสั่งเทรดจริง
-                          </Typography>
-                        </Stack>
-
-                        <Stack spacing={1} sx={{ gridColumn: { sm: "span 2" } }}>
-                          <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            AI API Key (Gemini)
-                          </Typography>
-                          <TextField
-                            type="password"
-                            placeholder={maskedGeminiKey || "กรุณากรอก API Key ของ Gemini"}
-                            value={geminiApiKey}
-                            onChange={(e) => setGeminiApiKey(e.target.value)}
-                            size="small"
-                            variant="outlined"
-                            sx={{
-                              "& input": { fontSize: "0.85rem", color: "#ffffff", fontFamily: "monospace" },
-                              "& .MuiOutlinedInput-root": {
-                                borderRadius: "12px",
-                                backgroundColor: "rgba(2, 6, 23, 0.45)",
-                                "& fieldset": { borderColor: "rgba(96, 165, 250, 0.14)" },
-                                "&:hover fieldset": { borderColor: "rgba(96, 165, 250, 0.28)" },
-                              }
-                            }}
-                          />
-                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
-                            ใช้สำหรับ AI Signal Review ผ่าน Gemini เท่านั้น ไม่เกี่ยวกับสิทธิ์ส่งคำสั่งซื้อขาย Bitkub
-                          </Typography>
-                        </Stack>
-
-                        {/* Dashboard Username */}
-                        <Stack spacing={1}>
-                          <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            ชื่อผู้ใช้แดชบอร์ด (Username)
-                          </Typography>
-                          <TextField
-                            value={dbUsername}
-                            onChange={(e) => setDbUsername(e.target.value)}
-                            size="small"
-                            variant="outlined"
-                            sx={{
-                              "& input": { fontSize: "0.85rem", color: "#ffffff" },
-                              "& .MuiOutlinedInput-root": {
-                                borderRadius: "12px",
-                                backgroundColor: "rgba(2, 6, 23, 0.45)",
-                                "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
-                                "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
-                              }
-                            }}
-                          />
-                        </Stack>
-
-                        {/* Dashboard Password */}
-                        <Stack spacing={1}>
-                          <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                            รหัสผ่านใหม่ (Password)
-                          </Typography>
-                          <TextField
-                            type="password"
-                            placeholder="เว้นว่างไว้เพื่อใช้รหัสผ่านเดิม"
-                            value={dbPassword}
-                            onChange={(e) => setDbPassword(e.target.value)}
-                            size="small"
-                            variant="outlined"
-                            sx={{
-                              "& input": { fontSize: "0.85rem", color: "#ffffff" },
-                              "& .MuiOutlinedInput-root": {
-                                borderRadius: "12px",
-                                backgroundColor: "rgba(2, 6, 23, 0.45)",
-                                "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
-                                "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
-                              }
-                            }}
-                          />
-                        </Stack>
+                          เลือกโหมดปฏิบัติการบอท (Operation Mode)
+                        </Typography>
+                        <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
+                          สลับระหว่างโหมดเทรดจำลองเพื่อความปลอดภัย หรือต่อตรงกระเป๋าเงินจริงเข้าตลาด
+                        </Typography>
                       </Box>
 
-                      <Button
-                        type="submit"
-                        disabled={credSaveLoading}
-                        variant="contained"
-                        startIcon={credSaveLoading ? <CircularProgress size={15} sx={{ color: "inherit" }} /> : undefined}
+                      <Box
                         sx={{
-                          py: 1.2,
-                          fontWeight: 600,
-                          fontSize: "0.88rem",
-                          borderRadius: "12px",
-                          backgroundColor: botConfig.dry_run ? "rgba(255, 255, 255, 0.08)" : "primary.main",
-                          color: botConfig.dry_run ? "#ffffff" : "#17201a",
-                          "&:hover": { 
-                            backgroundColor: botConfig.dry_run ? "rgba(255, 255, 255, 0.12)" : "primary.light" 
-                          },
-                          "&.Mui-disabled": {
-                            backgroundColor: "rgba(255, 255, 255, 0.05)",
-                            color: "text.disabled"
-                          }
+                          display: "grid",
+                          gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                          gap: 1,
+                          p: 0.5,
                         }}
                       >
-                        {credSaveLoading ? "Loading..." : "บันทึกข้อมูล"}
-                      </Button>
+                        {/* Dry Run Option Box */}
+                        <Paper
+                          onClick={() => handleModeChange(true)}
+                          sx={{
+                            p: 2.5,
+                            borderRadius: "16px",
+                            cursor: "pointer",
+                            backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.04)" : "rgba(13, 20, 35, 0.3)",
+                            border: botConfig.dry_run ? "1.5px solid rgba(148, 163, 184, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
+                            boxShadow: botConfig.dry_run ? "0 0 15px rgba(148, 163, 184, 0.05)" : "none",
+                            transition: "all 0.2s ease",
+                            "&:hover": {
+                              borderColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.6)" : "rgba(255, 255, 255, 0.08)",
+                              backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.06)" : "rgba(255, 255, 255, 0.01)",
+                            }
+                          }}
+                        >
+                          <Stack spacing={1.5}>
+                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: botConfig.dry_run ? "#94a3b8" : "text.secondary" }}>
+                                🧪 Dry-Run Mode
+                              </Typography>
+                              {botConfig.dry_run && <Chip label="ACTIVE" size="small" sx={{ height: 16, fontSize: "9px", fontWeight: 600, backgroundColor: "rgba(148, 163, 184, 0.15)", color: "#94a3b8", border: "1px solid rgba(148, 163, 184, 0.3)" }} />}
+                            </Box>
+                            <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", lineHeight: 1.5 }}>
+                              โหมดจำลองการซื้อขายโดยใช้ยอดเงินและราคาจริงเพื่อทดสอบอัลกอริทึม ปลอดภัย 100% ไม่ส่งคำสั่งซื้อไปยัง Bitkub
+                            </Typography>
+                          </Stack>
+                        </Paper>
+
+                        {/* Live Mode Option Box */}
+                        <Paper
+                          onClick={() => handleModeChange(false)}
+                          sx={{
+                            p: 2.5,
+                            borderRadius: "16px",
+                            cursor: "pointer",
+                            backgroundColor: !botConfig.dry_run ? "rgba(0, 193, 106, 0.03)" : "rgba(13, 20, 35, 0.3)",
+                            border: !botConfig.dry_run ? "1.5px solid rgba(0, 193, 106, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
+                            boxShadow: !botConfig.dry_run ? "0 0 15px rgba(0, 193, 106, 0.05)" : "none",
+                            transition: "all 0.2s ease",
+                            "&:hover": {
+                              borderColor: !botConfig.dry_run ? "rgba(0, 193, 106, 0.6)" : "rgba(255, 255, 255, 0.08)",
+                              backgroundColor: !botConfig.dry_run ? "rgba(0, 193, 106, 0.05)" : "rgba(255, 255, 255, 0.01)",
+                            }
+                          }}
+                        >
+                          <Stack spacing={1.5}>
+                            <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <Typography sx={{ fontWeight: 600, fontSize: "0.95rem", color: !botConfig.dry_run ? "primary.main" : "text.secondary" }}>
+                                ⚡ LIVE Trade Mode
+                              </Typography>
+                              {!botConfig.dry_run && <Chip label="ACTIVE" color="primary" size="small" sx={{ height: 16, fontSize: "9px", fontWeight: 500 }} />}
+                            </Box>
+                            <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", lineHeight: 1.5 }}>
+                              โหมดสั่งซื้อขายด้วยเงินจริงผ่าน API ของท่าน ออร์เดอร์ส่งลงกระดาน Bitkub ทันทีที่มีสัญญาณการซื้อขาย
+                            </Typography>
+                          </Stack>
+                        </Paper>
+                      </Box>
+
+                      {/* Info Banners */}
+                      {botConfig.dry_run ? (
+                        <Alert
+                          severity="info"
+                          icon={<ShieldCheck size={18} />}
+                          sx={{
+                            borderRadius: "14px",
+                            backgroundColor: "rgba(255, 255, 255, 0.015)",
+                            border: "1px solid rgba(255, 255, 255, 0.05)",
+                            color: "text.secondary",
+                            fontSize: "0.82rem",
+                            "& .MuiAlert-icon": { color: "#94a3b8" },
+                          }}
+                        >
+                          <strong>การป้องกันความปลอดภัย:</strong> ระบบแยกพอร์ตการซื้อขายและประวัติประมูลจำลองออกจากเงินจริงเด็ดขาดเพื่อไม่ให้เกิดความสับสน
+                        </Alert>
+                      ) : (
+                        <Alert
+                          severity="success"
+                          icon={<ShieldCheck size={18} />}
+                          sx={{
+                            borderRadius: "14px",
+                            backgroundColor: "rgba(0, 193, 106, 0.02)",
+                            border: "1px solid rgba(0, 193, 106, 0.1)",
+                            color: "primary.light",
+                            fontSize: "0.82rem",
+                            "& .MuiAlert-icon": { color: "primary.main" },
+                          }}
+                        >
+                          <strong>การใช้งานเงินจริง:</strong> ระบบกำลังพร้อมเชื่อมตรงบัญชี Bitkub ของท่าน ออร์เดอร์จะถูกซื้อขายด้วยเงินจริงทันทีตามเงื่อนไขที่กำหนด
+                        </Alert>
+                      )}
                     </Stack>
-                  </form>
-                )}
+                  )}
 
-                <Paper
-                  sx={{
-                    p: 2.2,
-                    borderRadius: "14px",
-                    backgroundColor: "rgba(255, 255, 255, 0.015)",
-                    border: "1px solid rgba(255, 255, 255, 0.05)",
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 0.8
-                  }}
-                >
-                  <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
-                    <Info size={15} style={{ color: "#fbbf24" }} />
-                    <Typography sx={{ fontSize: "0.78rem", fontWeight: 600, color: "#fbbf24", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                      วิธีสร้าง API Key จาก Bitkub
-                    </Typography>
-                  </Stack>
-                  <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.5 }}>
-                    1. ล็อกอินเข้าสู่เว็บ Bitkub.com &gt; ไปที่หน้า <strong>Settings (ตั้งค่า)</strong> &gt; <strong>API (การจัดการ API)</strong><br />
-                    2. กดสร้าง API Key ใหม่ โดยให้สิทธิ์ (Permissions) เฉพาะ <strong>Read Wallet (อ่าน)</strong> และ <strong>Trade (เทรด Spot)</strong> เท่านั้น<br />
-                    3. <span style={{ color: "#ef5b63", fontWeight: 600 }}>ห้ามสลับสิทธิ์การถอนเงิน (WITHDRAW) เด็ดขาด</span> เพื่อความปลอดภัยสูงสุดของกระเป๋าพอร์ตคุณเอง<br />
-                    4. นำคู่รหัสที่ได้มากรอกลงในช่องด้านบนและกดปุ่มบันทึก เพื่อเริ่มใช้งานบอทเงินจริง
-                  </Typography>
-                </Paper>
-              </Stack>
-            )}
+                  {/* TAB PANEL 1: Strategy Selection */}
+                  {tabIndex === 1 && (
+                    <Stack spacing={2.5}>
+                      {/* 1. AI SIGNAL FILTER GATE */}
+                      <Paper
+                        sx={{
+                          p: 2.5,
+                          borderRadius: "16px",
+                          backgroundColor: botConfig.ai_enabled
+                            ? (botConfig.ai_provider === "deepseek" ? "rgba(124, 58, 237, 0.02)" : "rgba(96, 165, 250, 0.02)")
+                            : "rgba(13, 20, 35, 0.3)",
+                          border: botConfig.ai_enabled
+                            ? (botConfig.ai_provider === "deepseek" ? "1px solid rgba(124, 58, 237, 0.15)" : "1px solid rgba(96, 165, 250, 0.15)")
+                            : "1px solid rgba(255, 255, 255, 0.045)",
+                          transition: "all 0.25s ease",
+                        }}
+                      >
+                        <Stack spacing={2}>
+                          <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1.5 }}>
+                            <Stack direction="row" spacing={1.5} sx={{ alignItems: "center", minWidth: 0 }}>
+                              <Box
+                                sx={{
+                                  width: 38,
+                                  height: 38,
+                                  borderRadius: "11px",
+                                  display: "grid",
+                                  placeItems: "center",
+                                  color: botConfig.ai_provider === "deepseek" ? "#a78bfa" : "#60a5fa",
+                                  backgroundColor: botConfig.ai_provider === "deepseek" ? "rgba(124, 58, 237, 0.1)" : "rgba(96, 165, 250, 0.1)",
+                                  flexShrink: 0
+                                }}
+                              >
+                                <Brain size={18} />
+                              </Box>
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography sx={{ fontSize: "0.95rem", fontWeight: 700, color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
+                                  1. AI Signal Filter Gate (ระบบกรองสัญญาณด้วย AI)
+                                </Typography>
+                                <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", mt: 0.3 }}>
+                                  คัดกรองความเสี่ยงและวิเคราะห์ความคุ้มค่าโดยใช้ AI เพื่อช่วยยืนยันและอนุมัติออร์เดอร์การซื้อขาย
+                                </Typography>
+                              </Box>
+                            </Stack>
+                            <Switch
+                              checked={botConfig.ai_enabled}
+                              onChange={(e) => updateBotConfigDraft({ ai_enabled: e.target.checked })}
+                              sx={{
+                                "& .MuiSwitch-switchBase.Mui-checked": { color: botConfig.ai_provider === "deepseek" ? "#a78bfa" : "#60a5fa" },
+                                "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: botConfig.ai_provider === "deepseek" ? "#a78bfa" : "#60a5fa" },
+                              }}
+                            />
+                          </Box>
 
-            {/* Auto-save status for bot config tabs (0-3), hidden on API tab since it has its own save */}
-            {tabIndex !== 4 && (
-              <>
-                <Divider sx={{ borderColor: "rgba(255,255,255,0.05)" }} />
-                <Box
-                  sx={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    py: 1.5,
-                    gap: 1.2,
-                    borderRadius: "12px",
-                    backgroundColor: "rgba(255,255,255,0.012)",
-                    border: "1px solid rgba(255,255,255,0.03)",
-                  }}
-                >
-                  {autoSaveState === "saving" && (
+                          {botConfig.ai_enabled && (
+                            <Stack spacing={2}>
+                              {/* Segmented Provider Toggle */}
+                              <Stack spacing={1}>
+                                <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                  AI Provider (ผู้ให้บริการ AI)
+                                </Typography>
+                                <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1.25 }}>
+                                  {/* Gemini Button */}
+                                  <Button
+                                    onClick={() => {
+                                      updateBotConfigDraft({
+                                        ai_provider: "gemini",
+                                        ai_model: "gemini-2.5-flash"
+                                      });
+                                    }}
+                                    startIcon={<GeminiLogo size={20} />}
+                                    sx={{
+                                      py: 1.2,
+                                      borderRadius: "12px",
+                                      border: botConfig.ai_provider === "gemini" ? "1.5px solid #60a5fa" : "1px solid rgba(255, 255, 255, 0.05)",
+                                      backgroundColor: botConfig.ai_provider === "gemini" ? "rgba(96, 165, 250, 0.08)" : "rgba(2, 6, 23, 0.25)",
+                                      color: botConfig.ai_provider === "gemini" ? "#60a5fa" : "text.secondary",
+                                      fontWeight: 700,
+                                      textTransform: "none",
+                                      fontFamily: "Outfit, sans-serif",
+                                      fontSize: "0.85rem",
+                                      transition: "all 0.2s ease",
+                                      "&:hover": {
+                                        backgroundColor: botConfig.ai_provider === "gemini" ? "rgba(96, 165, 250, 0.12)" : "rgba(255, 255, 255, 0.02)",
+                                        borderColor: botConfig.ai_provider === "gemini" ? "#60a5fa" : "rgba(255, 255, 255, 0.12)",
+                                      }
+                                    }}
+                                  >
+                                    Google Gemini
+                                  </Button>
+                                  {/* DeepSeek Button */}
+                                  <Button
+                                    onClick={() => {
+                                      updateBotConfigDraft({
+                                        ai_provider: "deepseek",
+                                        ai_model: "deepseek-reasoner"
+                                      });
+                                    }}
+                                    startIcon={<DeepSeekLogo size={20} />}
+                                    sx={{
+                                      py: 1.2,
+                                      borderRadius: "12px",
+                                      border: botConfig.ai_provider === "deepseek" ? "1.5px solid #a78bfa" : "1px solid rgba(255, 255, 255, 0.05)",
+                                      backgroundColor: botConfig.ai_provider === "deepseek" ? "rgba(167, 139, 250, 0.08)" : "rgba(2, 6, 23, 0.25)",
+                                      color: botConfig.ai_provider === "deepseek" ? "#a78bfa" : "text.secondary",
+                                      fontWeight: 700,
+                                      textTransform: "none",
+                                      fontFamily: "Outfit, sans-serif",
+                                      fontSize: "0.85rem",
+                                      transition: "all 0.2s ease",
+                                      "&:hover": {
+                                        backgroundColor: botConfig.ai_provider === "deepseek" ? "rgba(167, 139, 250, 0.12)" : "rgba(255, 255, 255, 0.02)",
+                                        borderColor: botConfig.ai_provider === "deepseek" ? "#a78bfa" : "rgba(255, 255, 255, 0.12)",
+                                      }
+                                    }}
+                                  >
+                                    DeepSeek
+                                  </Button>
+                                </Box>
+                              </Stack>
+
+                              {/* Model Configuration Form */}
+                              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1.1fr 0.75fr 0.75fr" }, gap: 1.5 }}>
+                                <Stack spacing={1}>
+                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                    AI Model Name
+                                  </Typography>
+                                  <TextField
+                                    value={botConfig.ai_model || (botConfig.ai_provider === "deepseek" ? "deepseek-reasoner" : "gemini-2.5-flash")}
+                                    onChange={(e) => updateBotConfigDraft({ ai_model: e.target.value })}
+                                    size="small"
+                                    sx={{
+                                      "& input": { fontSize: "0.82rem", color: "#ffffff", fontFamily: "monospace" },
+                                      "& .MuiOutlinedInput-root": {
+                                        borderRadius: "11px",
+                                        backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                        "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
+                                      },
+                                    }}
+                                  />
+                                  {/* Suggestions */}
+                                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5, mt: 0.5 }}>
+                                    {botConfig.ai_provider === "deepseek" ? (
+                                      <>
+                                        <Chip
+                                          label="deepseek-v4-pro"
+                                          size="small"
+                                          onClick={() => updateBotConfigDraft({ ai_model: "deepseek-v4-pro" })}
+                                          sx={{ height: 18, fontSize: "9px", cursor: "pointer", backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
+                                        />
+                                        <Chip
+                                          label="deepseek-reasoner"
+                                          size="small"
+                                          onClick={() => updateBotConfigDraft({ ai_model: "deepseek-reasoner" })}
+                                          sx={{ height: 18, fontSize: "9px", cursor: "pointer", backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
+                                        />
+                                        <Chip
+                                          label="deepseek-chat"
+                                          size="small"
+                                          onClick={() => updateBotConfigDraft({ ai_model: "deepseek-chat" })}
+                                          sx={{ height: 18, fontSize: "9px", cursor: "pointer", backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
+                                        />
+                                      </>
+                                    ) : (
+                                      <>
+                                        <Chip
+                                          label="gemini-3.5-flash"
+                                          size="small"
+                                          onClick={() => updateBotConfigDraft({ ai_model: "gemini-3.5-flash" })}
+                                          sx={{ height: 18, fontSize: "9px", cursor: "pointer", backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
+                                        />
+                                        <Chip
+                                          label="gemini-2.5-flash"
+                                          size="small"
+                                          onClick={() => updateBotConfigDraft({ ai_model: "gemini-2.5-flash" })}
+                                          sx={{ height: 18, fontSize: "9px", cursor: "pointer", backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
+                                        />
+                                        <Chip
+                                          label="gemini-1.5-flash"
+                                          size="small"
+                                          onClick={() => updateBotConfigDraft({ ai_model: "gemini-1.5-flash" })}
+                                          sx={{ height: 18, fontSize: "9px", cursor: "pointer", backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
+                                        />
+                                        <Chip
+                                          label="gemini-1.5-pro"
+                                          size="small"
+                                          onClick={() => updateBotConfigDraft({ ai_model: "gemini-1.5-pro" })}
+                                          sx={{ height: 18, fontSize: "9px", cursor: "pointer", backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
+                                        />
+                                      </>
+                                    )}
+                                  </Box>
+                                </Stack>
+                                <Stack spacing={0.8}>
+                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                    Min Score
+                                  </Typography>
+                                  <NumberStepper
+                                    value={botConfig.ai_min_score ?? 65}
+                                    step={5}
+                                    min={0}
+                                    onChange={(value) => updateBotConfigDraft({ ai_min_score: Math.max(0, Math.min(100, Math.round(value))) })}
+                                  />
+                                </Stack>
+                                <Stack spacing={0.8}>
+                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                    Confidence
+                                  </Typography>
+                                  <NumberStepper
+                                    value={botConfig.ai_min_confidence ?? 0.55}
+                                    step={0.05}
+                                    min={0}
+                                    onChange={(value) => updateBotConfigDraft({ ai_min_confidence: Math.max(0, Math.min(1, Number(value.toFixed(2)))) })}
+                                  />
+                                </Stack>
+                              </Box>
+
+                              {/* API Key Status Alert */}
+                              {(() => {
+                                const isDeepSeek = botConfig.ai_provider === "deepseek";
+                                const hasKey = isDeepSeek
+                                  ? (maskedDeepseekKey && maskedDeepseekKey !== "not set" && maskedDeepseekKey !== "")
+                                  : (maskedGeminiKey && maskedGeminiKey !== "not set" && maskedGeminiKey !== "");
+
+                                if (hasKey) {
+                                  return (
+                                    <Alert
+                                      severity="success"
+                                      sx={{
+                                        borderRadius: "12px",
+                                        backgroundColor: isDeepSeek ? "rgba(167, 139, 250, 0.02)" : "rgba(0, 193, 106, 0.02)",
+                                        border: isDeepSeek ? "1px solid rgba(167, 139, 250, 0.15)" : "1px solid rgba(0, 193, 106, 0.15)",
+                                        color: "text.secondary",
+                                        fontSize: "0.78rem",
+                                        "& .MuiAlert-icon": { color: isDeepSeek ? "#a78bfa" : "primary.main" },
+                                      }}
+                                    >
+                                      {isDeepSeek ? (
+                                        <>คีย์ <strong>DeepSeek API Key</strong> ได้รับการติดตั้งเรียบร้อยแล้ว ({maskedDeepseekKey})</>
+                                      ) : (
+                                        <>คีย์ <strong>Gemini API Key</strong> ได้รับการติดตั้งเรียบร้อยแล้ว ({maskedGeminiKey})</>
+                                      )}
+                                    </Alert>
+                                  );
+                                } else {
+                                  return (
+                                    <Alert
+                                      severity="warning"
+                                      sx={{
+                                        borderRadius: "12px",
+                                        backgroundColor: "rgba(245, 158, 11, 0.02)",
+                                        border: "1px solid rgba(245, 158, 11, 0.18)",
+                                        color: "text.secondary",
+                                        fontSize: "0.78rem",
+                                        "& .MuiAlert-icon": { color: "#f59e0b" },
+                                      }}
+                                    >
+                                      {isDeepSeek ? (
+                                        <>กรุณากรอกคีย์ <strong>DeepSeek API Key</strong> ในหน้าแท็บ API Access เพื่อให้บอทกรองสัญญาณได้สำเร็จ</>
+                                      ) : (
+                                        <>กรุณากรอกคีย์ <strong>Gemini API Key</strong> ในหน้าแท็บ API Access เพื่อให้บอทกรองสัญญาณได้สำเร็จ</>
+                                      )}
+                                    </Alert>
+                                  );
+                                }
+                              })()}
+                            </Stack>
+                          )}
+                        </Stack>
+                      </Paper>
+
+                      {/* Separator Divider */}
+                      <Divider sx={{ borderColor: "rgba(255, 255, 255, 0.06)", my: 1 }} />
+
+                      {/* 2. CORE TECHNICAL STRATEGIES */}
+                      <Stack spacing={1.5}>
+                        <Box>
+                          <Typography
+                            sx={{
+                              fontSize: "0.88rem",
+                              fontWeight: 600,
+                              color: "text.primary",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.08em",
+                              mb: 0.5,
+                            }}
+                          >
+                            2. Core Technical Strategy (กลยุทธ์หลักอินดิเคเตอร์)
+                          </Typography>
+                          <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
+                            เลือกบอทส่งสัญญาณเทรดหลักโดยอาศัยคณิตศาสตร์จากอินดิเคเตอร์ทางเทคนิค (Indicator Base)
+                          </Typography>
+                        </Box>
+
+                        {strategiesLoading ? (
+                          <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+                            <Typography sx={{ fontSize: "0.85rem", color: "text.secondary" }}>กำลังโหลดกลยุทธ์...</Typography>
+                          </Box>
+                        ) : (
+                          <Stack spacing={0.8}>
+                            {strategies.map((strat) => {
+                              const isActive = (botConfig.strategy || "multi_indicator") === strat.id;
+                              const riskColors: Record<string, { color: string; label: string }> = {
+                                low: { color: "#00c16a", label: "เสี่ยงต่ำ" },
+                                medium: { color: "#fbbf24", label: "เสี่ยงปานกลาง" },
+                                high: { color: "#ef5b63", label: "เสี่ยงสูง" },
+                              };
+                              const risk = riskColors[strat.risk_level] || riskColors.medium;
+
+                              return (
+                                <Paper
+                                  key={strat.id}
+                                  onClick={() => {
+                                    const patch: Partial<BotConfig> = { strategy: strat.id };
+                                    if (strat.risk_level === "low") {
+                                      patch.ai_min_score = 75;
+                                      patch.ai_min_confidence = 0.65;
+                                    } else if (strat.risk_level === "medium") {
+                                      patch.ai_min_score = 65;
+                                      patch.ai_min_confidence = 0.55;
+                                    } else if (strat.risk_level === "high") {
+                                      patch.ai_min_score = 50;
+                                      patch.ai_min_confidence = 0.45;
+                                    }
+                                    updateBotConfigDraft(patch);
+                                  }}
+                                  sx={{
+                                    p: 1.5,
+                                    borderRadius: "12px",
+                                    cursor: "pointer",
+                                    backgroundColor: isActive ? "rgba(0, 193, 106, 0.03)" : "rgba(13, 20, 35, 0.3)",
+                                    border: isActive ? "1.5px solid rgba(0, 193, 106, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
+                                    boxShadow: isActive ? "0 0 15px rgba(0, 193, 106, 0.05)" : "none",
+                                    transition: "all 0.2s ease",
+                                    "&:hover": {
+                                      borderColor: isActive ? "rgba(0, 193, 106, 0.6)" : "rgba(255, 255, 255, 0.1)",
+                                      backgroundColor: isActive ? "rgba(0, 193, 106, 0.05)" : "rgba(255, 255, 255, 0.015)",
+                                    },
+                                  }}
+                                >
+                                  <Stack spacing={0.8}>
+                                    {/* Header row */}
+                                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 0.5 }}>
+                                      <Typography sx={{ fontWeight: 600, fontSize: "0.88rem", color: isActive ? "primary.main" : "text.primary" }}>
+                                        {strat.name}
+                                      </Typography>
+                                      <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
+                                        <Chip
+                                          label={risk.label}
+                                          size="small"
+                                          sx={{
+                                            height: 18,
+                                            fontSize: "9px",
+                                            fontWeight: 600,
+                                            backgroundColor: `${risk.color}10`,
+                                            color: risk.color,
+                                            border: `1px solid ${risk.color}30`,
+                                          }}
+                                        />
+                                        {isActive && (
+                                          <Chip
+                                            label="ACTIVE"
+                                            color="primary"
+                                            size="small"
+                                            sx={{ height: 18, fontSize: "9px", fontWeight: 600 }}
+                                          />
+                                        )}
+                                      </Stack>
+                                    </Box>
+
+                                    {/* Description */}
+                                    <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.45 }}>
+                                      {strat.description}
+                                    </Typography>
+
+                                    {/* Indicators - compact inline */}
+                                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.4 }}>
+                                      {strat.indicators.map((ind) => (
+                                        <Chip
+                                          key={ind}
+                                          label={ind}
+                                          size="small"
+                                          sx={{
+                                            height: 18,
+                                            fontSize: "0.65rem",
+                                            fontWeight: 500,
+                                            backgroundColor: "rgba(255, 255, 255, 0.02)",
+                                            color: "text.secondary",
+                                            border: "1px solid rgba(255, 255, 255, 0.05)",
+                                            borderRadius: "5px",
+                                          }}
+                                        />
+                                      ))}
+                                    </Box>
+
+                                    {/* Buy/Sell Logic - only show for active strategy */}
+                                    {isActive && (
+                                      <Box
+                                        sx={{
+                                          display: "grid",
+                                          gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
+                                          gap: 0.8,
+                                          mt: 0.3,
+                                        }}
+                                      >
+                                        <Box
+                                          sx={{
+                                            p: 1,
+                                            borderRadius: "8px",
+                                            backgroundColor: "rgba(0, 193, 106, 0.02)",
+                                            border: "1px solid rgba(0, 193, 106, 0.06)",
+                                          }}
+                                        >
+                                          <Typography sx={{ fontSize: "0.68rem", fontWeight: 600, color: "#00c16a", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.2 }}>
+                                            🟢 ซื้อ
+                                          </Typography>
+                                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", lineHeight: 1.35 }}>
+                                            {strat.buy_logic}
+                                          </Typography>
+                                        </Box>
+                                        <Box
+                                          sx={{
+                                            p: 1,
+                                            borderRadius: "8px",
+                                            backgroundColor: "rgba(239, 91, 99, 0.02)",
+                                            border: "1px solid rgba(239, 91, 99, 0.06)",
+                                          }}
+                                        >
+                                          <Typography sx={{ fontSize: "0.68rem", fontWeight: 600, color: "#ef5b63", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.2 }}>
+                                            🔴 ขาย
+                                          </Typography>
+                                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", lineHeight: 1.35 }}>
+                                            {strat.sell_logic}
+                                          </Typography>
+                                        </Box>
+                                      </Box>
+                                    )}
+                                  </Stack>
+                                </Paper>
+                              );
+                            })}
+                          </Stack>
+                        )}
+
+                        <Alert
+                          severity="info"
+                          icon={<Info size={16} />}
+                          sx={{
+                            borderRadius: "14px",
+                            backgroundColor: "rgba(255, 255, 255, 0.015)",
+                            border: "1px solid rgba(255, 255, 255, 0.05)",
+                            color: "text.secondary",
+                            fontSize: "0.82rem",
+                            "& .MuiAlert-icon": { color: "#94a3b8" },
+                          }}
+                        >
+                          การเปลี่ยนกลยุทธ์จะมีผลในรอบสแกนถัดไปของบอท ตำแหน่งถือครองที่เปิดค้างไว้จะยังคงใช้เกณฑ์ TP/SL ตามปกติ
+                        </Alert>
+                      </Stack>
+                    </Stack>
+                  )}
+
+                  {/* TAB PANEL 2: Coin Scanner Setup */}
+                  {tabIndex === 2 && (
+                    <Stack spacing={1.5}>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 1 }}>
+                        <Box>
+                          <Typography
+                            sx={{
+                              fontSize: "0.88rem",
+                              fontWeight: 600,
+                              color: "text.primary",
+                              textTransform: "uppercase",
+                              letterSpacing: "0.08em",
+                              mb: 0.5,
+                            }}
+                          >
+                            ลิสต์เป้าหมายสแกน ({botConfig.symbols?.length || 0} เหรียญ)
+                          </Typography>
+                          <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
+                            บอทจะคำนวณสัญญาณทางเทคนิคและสแกนเฉพาะเหรียญที่กำหนดไว้ในรายการนี้เท่านั้น
+                          </Typography>
+                        </Box>
+                        <Button
+                          onClick={handleResetDefaultSymbols}
+                          variant="outlined"
+                          size="small"
+                          sx={{
+                            fontSize: "11px",
+                            fontWeight: 500,
+                            borderColor: "rgba(255,255,255,0.08)",
+                            color: "text.primary",
+                            textTransform: "none",
+                            borderRadius: "9px",
+                            px: 2,
+                            py: 0.5,
+                            "&:hover": { borderColor: "rgba(255,255,255,0.18)", backgroundColor: "rgba(255,255,255,0.02)" }
+                          }}
+                        >
+                          ใช้ค่าเริ่มต้น (18 เหรียญ)
+                        </Button>
+                      </Box>
+
+                      {/* Active Coins Section */}
+                      <Box
+                        sx={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 1,
+                          p: 2,
+                          borderRadius: "16px",
+                          backgroundColor: "rgba(2, 6, 23, 0.45)",
+                          border: "1px solid rgba(255, 255, 255, 0.03)",
+                          minHeight: "100px",
+                          alignContent: "flex-start",
+                        }}
+                      >
+                        {(!botConfig.symbols || botConfig.symbols.length === 0) ? (
+                          <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", m: "auto" }}>
+                            ไม่มีเหรียญเปิดสแกนขณะนี้ กรุณาพิมพ์เพิ่มอย่างน้อย 1 คู่เหรียญ
+                          </Typography>
+                        ) : (
+                          botConfig.symbols.map((sym) => (
+                            <Chip
+                              key={sym}
+                              label={sym}
+                              onDelete={() => handleDeleteSymbol(sym)}
+                              size="small"
+                              sx={{
+                                fontWeight: 500,
+                                fontSize: "0.8rem",
+                                border: "1px solid rgba(255,255,255,0.06)",
+                                backgroundColor: "rgba(255,255,255,0.02)",
+                                color: "text.primary",
+                                borderRadius: "9px",
+                                transition: "all 0.15s ease",
+                                "&:hover": {
+                                  backgroundColor: "rgba(239, 91, 99, 0.05)",
+                                  borderColor: "rgba(239, 91, 99, 0.2)",
+                                },
+                                "& .MuiChip-deleteIcon": {
+                                  color: "rgba(255, 255, 255, 0.3)",
+                                  fontSize: "14px",
+                                  "&:hover": { color: "#ef5b63" }
+                                }
+                              }}
+                            />
+                          ))
+                        )}
+                      </Box>
+
+                      {/* Coin Input Form */}
+                      <Box sx={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 1, alignItems: "center" }}>
+                        <Autocomplete
+                          options={availableSymbolsToAdd}
+                          value={selectedSymbolToAdd}
+                          onChange={(_, newValue) => setSelectedSymbolToAdd(newValue)}
+                          size="small"
+                          autoHighlight
+                          clearOnEscape
+                          slotProps={{
+                            paper: {
+                              sx: {
+                                backgroundColor: "#0d1321",
+                                border: "1px solid rgba(255, 255, 255, 0.08)",
+                                color: "text.primary",
+                                "& .MuiAutocomplete-option": {
+                                  fontSize: "0.88rem",
+                                  color: "text.primary",
+                                  "&[aria-selected='true']": {
+                                    backgroundColor: "rgba(0, 193, 106, 0.15)",
+                                  },
+                                  "&.Mui-focused, &[data-focus='true']": {
+                                    backgroundColor: "rgba(255, 255, 255, 0.05)",
+                                  },
+                                  "&:hover": {
+                                    backgroundColor: "rgba(0, 193, 106, 0.08)",
+                                  }
+                                }
+                              }
+                            }
+                          }}
+                          renderInput={(params) => (
+                            <TextField
+                              {...params}
+                              label="ค้นหาคู่เหรียญเพื่อสแกนเพิ่ม (เช่น ADA/THB)"
+                              variant="outlined"
+                              sx={{
+                                "& label": { fontSize: "0.82rem", color: "text.secondary" },
+                                "& input": { fontSize: "0.88rem", color: "text.primary" },
+                                "& .MuiOutlinedInput-root": {
+                                  borderRadius: "12px",
+                                  "& fieldset": { borderColor: "rgba(255, 255, 255, 0.08)" },
+                                  "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
+                                }
+                              }}
+                            />
+                          )}
+                          sx={{ width: "100%" }}
+                        />
+                        <Button
+                          onClick={handleAddSymbol}
+                          disabled={!selectedSymbolToAdd}
+                          variant="contained"
+                          sx={{
+                            py: 1.1,
+                            px: 3,
+                            height: "40px",
+                            fontSize: "0.85rem",
+                            fontWeight: 600,
+                            borderRadius: "12px",
+                            backgroundColor: "primary.main",
+                            color: "#17201a",
+                            "&:hover": { backgroundColor: "primary.light" },
+                            "&.Mui-disabled": {
+                              backgroundColor: "rgba(255, 255, 255, 0.05)",
+                              color: "text.disabled"
+                            }
+                          }}
+                        >
+                          เพิ่มคู่เหรียญ
+                        </Button>
+                      </Box>
+
+                      {/* Suggested Section */}
+                      {suggestedCoins.length > 0 && (
+                        <Stack spacing={1}>
+                          <Typography sx={{ fontSize: "0.78rem", fontWeight: 500, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            คู่เหรียญยอดนิยมแนะนำเพื่อสแกนเพิ่ม (Suggested Coins)
+                          </Typography>
+                          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
+                            {suggestedCoins.slice(0, 10).map((coin) => (
+                              <Chip
+                                key={coin}
+                                label={`+ ${coin}`}
+                                onClick={() => {
+                                  const updated = [...(botConfig.symbols || []), coin];
+                                  updateBotConfigDraft({ symbols: updated });
+                                }}
+                                size="small"
+                                sx={{
+                                  fontSize: "0.75rem",
+                                  fontWeight: 500,
+                                  backgroundColor: "rgba(255,255,255,0.02)",
+                                  color: "text.secondary",
+                                  border: "1px solid rgba(255,255,255,0.04)",
+                                  borderRadius: "6px",
+                                  cursor: "pointer",
+                                  "&:hover": {
+                                    backgroundColor: "rgba(0, 193, 106, 0.08)",
+                                    borderColor: "rgba(0, 193, 106, 0.15)",
+                                    color: "primary.main"
+                                  }
+                                }}
+                              />
+                            ))}
+                          </Box>
+                        </Stack>
+                      )}
+                    </Stack>
+                  )}
+
+                  {/* TAB PANEL 3: Strategy Parameters */}
+                  {tabIndex === 3 && (
+                    <Stack spacing={1.5}>
+                      <Box>
+                        <Typography
+                          sx={{
+                            fontSize: "0.88rem",
+                            fontWeight: 600,
+                            color: "text.primary",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            mb: 0.5,
+                          }}
+                        >
+                          พารามิเตอร์เทรด & การคุมเสี่ยง (Strategy Parameters)
+                        </Typography>
+                        <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
+                          ปรับการคำนวณวงเงินต่อออร์เดอร์ ไม้ถือครองสูงสุด ขอบเขตการทำกำไรและควบคุมความสูญเสีย
+                        </Typography>
+                      </Box>
+
+                      <Stack spacing={2.5}>
+                        {/* 1. Budget Allocation Card */}
+                        <Paper
+                          sx={{
+                            p: 2.5,
+                            borderRadius: "16px",
+                            backgroundColor: "rgba(13, 20, 35, 0.35)",
+                            border: "1px solid rgba(16, 185, 129, 0.15)",
+                          }}
+                        >
+                          <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "#10b981", mb: 2, display: "flex", alignItems: "center", gap: 1, fontFamily: "Outfit, sans-serif" }}>
+                            <Coins size={15} /> 1. Budget Allocation Limits (ขีดจำกัดการจัดสรรงบประมาณ)
+                          </Typography>
+                          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
+                            {/* Max Budget */}
+                            <Stack spacing={1} sx={{ gridColumn: "span 2" }}>
+                              <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                งบลงทุนของบอทสูงสุด (Max Budget THB)
+                              </Typography>
+                              <NumberStepper
+                                value={botConfig.max_budget_thb ?? 5000}
+                                step={100}
+                                min={100}
+                                suffix="THB"
+                                onChange={(value) => updateBotConfigDraft({ max_budget_thb: value })}
+                              />
+                              <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
+                                จำกัดงบประมาณรวมสูงสุดที่บอทใช้ซื้อเหรียญถือครองพร้อมกันทั้งหมด เพื่อความปลอดภัยป้องกันไม่ให้บอทเทรดจนเกินงบที่ต้องการ
+                              </Typography>
+                            </Stack>
+
+                            {/* Stake Amount */}
+                            <Stack spacing={1} sx={{ gridColumn: { xs: "span 2", sm: "span 1" } }}>
+                              <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                เงินทุนต่อไม้ (Stake Amount)
+                              </Typography>
+                              <NumberStepper
+                                value={botConfig.stake_amount_thb ?? 100}
+                                step={1}
+                                min={10}
+                                suffix="THB"
+                                onChange={(value) => updateBotConfigDraft({ stake_amount_thb: value })}
+                              />
+                              <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
+                                จำกัดงบประมาณต่อออร์เดอร์ที่ใช้เปิดตำแหน่ง
+                              </Typography>
+                            </Stack>
+
+                            {/* Max Open Trades */}
+                            <Stack spacing={1} sx={{ gridColumn: { xs: "span 2", sm: "span 1" } }}>
+                              <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                จำนวนไม้เทรดสูงสุด (Max Open Trades)
+                              </Typography>
+                              <NumberStepper
+                                value={botConfig.max_open_trades ?? 3}
+                                step={1}
+                                min={1}
+                                onChange={(value) => updateBotConfigDraft({ max_open_trades: Math.max(1, Math.round(value)) })}
+                              />
+                              <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
+                                จำกัดจำนวนเหรียญที่ถือครองพร้อมกันทั้งหมด
+                              </Typography>
+                            </Stack>
+                          </Box>
+                        </Paper>
+
+                        {/* 2. Exit Targets & Risk Control Card */}
+                        <Paper
+                          sx={{
+                            p: 2.5,
+                            borderRadius: "16px",
+                            backgroundColor: "rgba(13, 20, 35, 0.35)",
+                            border: "1px solid rgba(245, 158, 11, 0.15)",
+                          }}
+                        >
+                          <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "#f59e0b", mb: 2, display: "flex", alignItems: "center", gap: 1, fontFamily: "Outfit, sans-serif" }}>
+                            <Shield size={15} /> 2. Exit Targets & Risk Control (เป้าหมายกำไร & การตัดขาดทุน)
+                          </Typography>
+                          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
+                            {/* Take Profit */}
+                            <Stack spacing={1} sx={{ gridColumn: { xs: "span 2", sm: "span 1" } }}>
+                              <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                เป้าหมายกำไร (Take Profit)
+                              </Typography>
+                              <NumberStepper
+                                value={botConfig.take_profit_pct ?? 10}
+                                step={1}
+                                min={0.1}
+                                suffix="%"
+                                onChange={(value) => updateBotConfigDraft({ take_profit_pct: value })}
+                              />
+                              <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
+                                ระบบทำการขายเก็บกำไรเมื่อราคาสูงขึ้นถึงเกณฑ์เป้าหมายนี้
+                              </Typography>
+                            </Stack>
+
+                            {/* Stop Loss */}
+                            <Stack spacing={1} sx={{ gridColumn: { xs: "span 2", sm: "span 1" } }}>
+                              <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                ขีดจำกัดการขาดทุน (Stop Loss)
+                              </Typography>
+                              <NumberStepper
+                                value={botConfig.stop_loss_pct ?? -5}
+                                step={1}
+                                suffix="%"
+                                onChange={(value) => updateBotConfigDraft({ stop_loss_pct: value })}
+                              />
+                              <Typography sx={{ fontSize: "0.75rem", color: "text.secondary" }}>
+                                ระบบตัดสินใจคัตขายขาดทุนเมื่อราคาดิ่งลงต่ำกว่าต้นทุน
+                              </Typography>
+                            </Stack>
+                          </Box>
+                        </Paper>
+                      </Stack>
+
+                      {/* Advanced Risk Evaluation Card */}
+                      <Paper
+                        sx={{
+                          p: 2.5,
+                          borderRadius: "16px",
+                          backgroundColor: riskBg,
+                          border: `1px solid ${riskColor}20`,
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 1,
+                          transition: "all 0.25s ease",
+                        }}
+                      >
+                        <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                            <Activity size={15} style={{ color: riskColor }} />
+                            <Typography sx={{ fontSize: "0.78rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                              ประเมินระดับความเสี่ยงตามตั้งค่าปัจจุบัน
+                            </Typography>
+                          </Stack>
+                          <Chip
+                            label={riskLabel}
+                            size="small"
+                            sx={{
+                              backgroundColor: "rgba(255,255,255,0.02)",
+                              color: riskColor,
+                              border: `1px solid ${riskColor}30`,
+                              fontSize: "10px",
+                              fontWeight: 500,
+                              height: "20px"
+                            }}
+                          />
+                        </Box>
+                        <Typography sx={{ fontSize: "0.85rem", color: "text.primary", fontWeight: 600 }}>
+                          {riskDescription}
+                        </Typography>
+                        <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.45 }}>
+                          บอทเปิดระบบปฏิบัติการบน Bitkub Spot ตลาดไม่มีกลไกเลเวอเรจขาลงและไม่มีความเสี่ยงด้านการล้างพอร์ต (Liquidation) ทิศทางการซื้อขายเป็น LONG ONLY (ซื้อตอนต่ำเพื่อขายตอนสูง) เท่านั้น การจำกัดไม้และกรอบ TP/SL ถือเป็นหัวใจการประคองมูลค่าพอร์ตหลัก
+                        </Typography>
+                      </Paper>
+                    </Stack>
+                  )}
+
+                  {/* TAB PANEL 4: API & Password Credentials */}
+                  {tabIndex === 4 && (
+                    <Stack spacing={2}>
+                      <Box>
+                        <Typography
+                          sx={{
+                            fontSize: "0.88rem",
+                            fontWeight: 600,
+                            color: "text.primary",
+                            textTransform: "uppercase",
+                            letterSpacing: "0.08em",
+                            mb: 0.5,
+                          }}
+                        >
+                          ตั้งค่าการเชื่อมต่อ Bitkub API & บัญชีผู้ใช้
+                        </Typography>
+                        <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
+                          ตั้งค่า API Key และรหัสความปลอดภัยสำหรับการทำงานแบบ LIVE และอัปเดตชื่อผู้ใช้/รหัสผ่านระบบแดชบอร์ด
+                        </Typography>
+                      </Box>
+
+
+
+                      {credLoading ? (
+                        <Box sx={{ display: "flex", justifyContent: "center", py: 4 }}>
+                          <CircularProgress size={24} sx={{ color: "primary.main" }} />
+                        </Box>
+                      ) : (
+                        <form onSubmit={handleUpdateCredentials}>
+                          <Stack spacing={2.5}>
+                            {/* 1. Bitkub Exchange Connection */}
+                            <Paper
+                              sx={{
+                                p: 2.5,
+                                borderRadius: "16px",
+                                backgroundColor: "rgba(13, 20, 35, 0.35)",
+                                border: "1px solid rgba(0, 193, 106, 0.15)",
+                              }}
+                            >
+                              <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "#00c16a", mb: 2, display: "flex", alignItems: "center", gap: 1, fontFamily: "Outfit, sans-serif" }}>
+                                <Coins size={15} /> 1. Bitkub Spot API Connections (เชื่อมต่อกระดานเทรด Bitkub)
+                              </Typography>
+                              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
+                                {/* API Key */}
+                                <Stack spacing={1}>
+                                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                    Bitkub API Key
+                                  </Typography>
+                                  <TextField
+                                    placeholder={maskedKey || "กรุณากรอก API Key"}
+                                    value={apiKey}
+                                    onChange={(e) => setApiKey(e.target.value)}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{
+                                      "& input": { fontSize: "0.85rem", color: "#ffffff", fontFamily: "monospace" },
+                                      "& .MuiOutlinedInput-root": {
+                                        borderRadius: "12px",
+                                        backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                        "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
+                                        "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
+                                      }
+                                    }}
+                                  />
+                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
+                                    คีย์สาธารณะเพื่อดึงข้อมูลบาลานซ์กระเป๋าและประวัติเทรด
+                                  </Typography>
+                                </Stack>
+
+                                {/* API Secret */}
+                                <Stack spacing={1}>
+                                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                    Bitkub API Secret
+                                  </Typography>
+                                  <TextField
+                                    type="password"
+                                    placeholder={maskedSecret || "กรุณากรอก API Secret"}
+                                    value={apiSecret}
+                                    onChange={(e) => setApiSecret(e.target.value)}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{
+                                      "& input": { fontSize: "0.85rem", color: "#ffffff" },
+                                      "& .MuiOutlinedInput-root": {
+                                        borderRadius: "12px",
+                                        backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                        "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
+                                        "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
+                                      }
+                                    }}
+                                  />
+                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
+                                    รหัสคู่กับ API Key สำหรับยืนยันตัวตนส่งคำสั่งเทรดจริง
+                                  </Typography>
+                                </Stack>
+                              </Box>
+                            </Paper>
+
+                            {/* 2. AI Providers Credentials */}
+                            <Paper
+                              sx={{
+                                p: 2.5,
+                                borderRadius: "16px",
+                                backgroundColor: "rgba(13, 20, 35, 0.35)",
+                                border: "1px solid rgba(96, 165, 250, 0.15)",
+                              }}
+                            >
+                              <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "#60a5fa", mb: 2, display: "flex", alignItems: "center", gap: 1, fontFamily: "Outfit, sans-serif" }}>
+                                <Brain size={15} /> 2. AI Model API Keys (เชื่อมต่อระบบ AI กรองสัญญาณ)
+                              </Typography>
+                              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
+                                {/* Gemini API Key */}
+                                <Stack spacing={1} sx={{ gridColumn: { xs: "span 2", sm: "span 1" } }}>
+                                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 0.75 }}>
+                                    <GeminiLogo size={16} /> AI API Key (Gemini)
+                                  </Typography>
+                                  <TextField
+                                    type="password"
+                                    placeholder={maskedGeminiKey || "กรุณากรอก API Key ของ Gemini"}
+                                    value={geminiApiKey}
+                                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{
+                                      "& input": { fontSize: "0.85rem", color: "#ffffff", fontFamily: "monospace" },
+                                      "& .MuiOutlinedInput-root": {
+                                        borderRadius: "12px",
+                                        backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                        "& fieldset": { borderColor: "rgba(96, 165, 250, 0.14)" },
+                                        "&:hover fieldset": { borderColor: "rgba(96, 165, 250, 0.28)" },
+                                      }
+                                    }}
+                                  />
+                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
+                                    ใช้สำหรับ AI Signal Review ผ่าน Gemini เท่านั้น
+                                  </Typography>
+                                </Stack>
+
+                                {/* DeepSeek API Key */}
+                                <Stack spacing={1} sx={{ gridColumn: { xs: "span 2", sm: "span 1" } }}>
+                                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em", display: "flex", alignItems: "center", gap: 0.75 }}>
+                                    <DeepSeekLogo size={16} /> AI API Key (DeepSeek)
+                                  </Typography>
+                                  <TextField
+                                    type="password"
+                                    placeholder={maskedDeepseekKey || "กรุณากรอก API Key ของ DeepSeek"}
+                                    value={deepseekApiKey}
+                                    onChange={(e) => setDeepseekApiKey(e.target.value)}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{
+                                      "& input": { fontSize: "0.85rem", color: "#ffffff", fontFamily: "monospace" },
+                                      "& .MuiOutlinedInput-root": {
+                                        borderRadius: "12px",
+                                        backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                        "& fieldset": { borderColor: "rgba(129, 140, 248, 0.14)" },
+                                        "&:hover fieldset": { borderColor: "rgba(129, 140, 248, 0.28)" },
+                                      }
+                                    }}
+                                  />
+                                  <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
+                                    ใช้สำหรับ AI Signal Review ผ่าน DeepSeek R1 เท่านั้น
+                                  </Typography>
+                                </Stack>
+                              </Box>
+                            </Paper>
+
+                            {/* 3. Dashboard Admin Password */}
+                            <Paper
+                              sx={{
+                                p: 2.5,
+                                borderRadius: "16px",
+                                backgroundColor: "rgba(13, 20, 35, 0.35)",
+                                border: "1px solid rgba(255, 255, 255, 0.05)",
+                              }}
+                            >
+                              <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "text.primary", mb: 2, display: "flex", alignItems: "center", gap: 1, fontFamily: "Outfit, sans-serif" }}>
+                                <ShieldCheck size={15} /> 3. Dashboard Web Authentication (บัญชีเข้าแดชบอร์ด)
+                              </Typography>
+                              <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2.5 }}>
+                                {/* Username */}
+                                <Stack spacing={1}>
+                                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                    ชื่อผู้ใช้แดชบอร์ด (Username)
+                                  </Typography>
+                                  <TextField
+                                    value={dbUsername}
+                                    onChange={(e) => setDbUsername(e.target.value)}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{
+                                      "& input": { fontSize: "0.85rem", color: "#ffffff" },
+                                      "& .MuiOutlinedInput-root": {
+                                        borderRadius: "12px",
+                                        backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                        "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
+                                        "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
+                                      }
+                                    }}
+                                  />
+                                </Stack>
+
+                                {/* Password */}
+                                <Stack spacing={1}>
+                                  <Typography sx={{ fontSize: "0.82rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                    รหัสผ่านใหม่ (Password)
+                                  </Typography>
+                                  <TextField
+                                    type="password"
+                                    placeholder="เว้นว่างไว้เพื่อใช้รหัสผ่านเดิม"
+                                    value={dbPassword}
+                                    onChange={(e) => setDbPassword(e.target.value)}
+                                    size="small"
+                                    variant="outlined"
+                                    sx={{
+                                      "& input": { fontSize: "0.85rem", color: "#ffffff" },
+                                      "& .MuiOutlinedInput-root": {
+                                        borderRadius: "12px",
+                                        backgroundColor: "rgba(2, 6, 23, 0.45)",
+                                        "& fieldset": { borderColor: "rgba(255, 255, 255, 0.06)" },
+                                        "&:hover fieldset": { borderColor: "rgba(255, 255, 255, 0.15)" },
+                                      }
+                                    }}
+                                  />
+                                </Stack>
+                              </Box>
+                            </Paper>
+
+                            <Button
+                              type="submit"
+                              disabled={credSaveLoading}
+                              variant="contained"
+                              startIcon={credSaveLoading ? <CircularProgress size={15} sx={{ color: "inherit" }} /> : undefined}
+                              sx={{
+                                py: 1.2,
+                                fontWeight: 600,
+                                fontSize: "0.88rem",
+                                borderRadius: "12px",
+                                backgroundColor: botConfig.dry_run ? "rgba(255, 255, 255, 0.08)" : "primary.main",
+                                color: botConfig.dry_run ? "#ffffff" : "#17201a",
+                                "&:hover": {
+                                  backgroundColor: botConfig.dry_run ? "rgba(255, 255, 255, 0.12)" : "primary.light"
+                                },
+                                "&.Mui-disabled": {
+                                  backgroundColor: "rgba(255, 255, 255, 0.05)",
+                                  color: "text.disabled"
+                                }
+                              }}
+                            >
+                              {credSaveLoading ? "Loading..." : "บันทึกข้อมูล"}
+                            </Button>
+                          </Stack>
+                        </form>
+                      )}
+
+                      <Paper
+                        sx={{
+                          p: 2.2,
+                          borderRadius: "14px",
+                          backgroundColor: "rgba(255, 255, 255, 0.015)",
+                          border: "1px solid rgba(255, 255, 255, 0.05)",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 0.8
+                        }}
+                      >
+                        <Stack direction="row" spacing={1} sx={{ alignItems: "center" }}>
+                          <Info size={15} style={{ color: "#fbbf24" }} />
+                          <Typography sx={{ fontSize: "0.78rem", fontWeight: 600, color: "#fbbf24", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                            วิธีสร้าง API Key จาก Bitkub
+                          </Typography>
+                        </Stack>
+                        <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.5 }}>
+                          1. ล็อกอินเข้าสู่เว็บ Bitkub.com &gt; ไปที่หน้า <strong>Settings (ตั้งค่า)</strong> &gt; <strong>API (การจัดการ API)</strong><br />
+                          2. กดสร้าง API Key ใหม่ โดยให้สิทธิ์ (Permissions) เฉพาะ <strong>Read Wallet (อ่าน)</strong> และ <strong>Trade (เทรด Spot)</strong> เท่านั้น<br />
+                          3. <span style={{ color: "#ef5b63", fontWeight: 600 }}>ห้ามสลับสิทธิ์การถอนเงิน (WITHDRAW) เด็ดขาด</span> เพื่อความปลอดภัยสูงสุดของกระเป๋าพอร์ตคุณเอง<br />
+                          4. สำหรับระบบ AI Review: สร้าง API Key จาก <strong>Google AI Studio (Gemini)</strong> หรือ <strong>DeepSeek Open Platform (DeepSeek R1)</strong> เพื่อนำมากรอกใช้งานระบบกรองสัญญาณอัจฉริยะ
+                        </Typography>
+                      </Paper>
+                    </Stack>
+                  )}
+
+                  {/* Auto-save status for bot config tabs (0-3), hidden on API tab since it has its own save */}
+                  {tabIndex !== 4 && (
                     <>
-                      <CircularProgress size={14} sx={{ color: botConfig.dry_run ? "#94a3b8" : "primary.main" }} />
-                      <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", fontWeight: 500 }}>
-                        กำลังบันทึกการตั้งค่าอัตโนมัติ...
-                      </Typography>
+                      <Divider sx={{ borderColor: "rgba(255,255,255,0.05)" }} />
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          py: 1.5,
+                          gap: 1.2,
+                          borderRadius: "12px",
+                          backgroundColor: "rgba(255,255,255,0.012)",
+                          border: "1px solid rgba(255,255,255,0.03)",
+                        }}
+                      >
+                        {autoSaveState === "saving" && (
+                          <>
+                            <CircularProgress size={14} sx={{ color: botConfig.dry_run ? "#94a3b8" : "primary.main" }} />
+                            <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", fontWeight: 500 }}>
+                              กำลังบันทึกการตั้งค่าอัตโนมัติ...
+                            </Typography>
+                          </>
+                        )}
+                        {autoSaveState === "saved" && (
+                          <Typography sx={{ fontSize: "0.82rem", color: "#00c16a", fontWeight: 600 }}>
+                            ✓ บันทึกการตั้งค่าระบบเรียบร้อยแล้ว
+                          </Typography>
+                        )}
+                        {autoSaveState === "error" && (
+                          <Typography sx={{ fontSize: "0.82rem", color: "#ef5b63", fontWeight: 600 }}>
+                            ✗ เกิดข้อผิดพลาดในการบันทึกข้อมูล
+                          </Typography>
+                        )}
+                        {(!autoSaveState || autoSaveState === "idle") && (
+                          <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", fontWeight: 500 }}>
+                            การตั้งค่าจะถูกบันทึกโดยอัตโนมัติเมื่อมีการเปลี่ยนแปลง
+                          </Typography>
+                        )}
+                      </Box>
                     </>
                   )}
-                  {autoSaveState === "saved" && (
-                    <Typography sx={{ fontSize: "0.82rem", color: "#00c16a", fontWeight: 600 }}>
-                      ✓ บันทึกการตั้งค่าระบบเรียบร้อยแล้ว
-                    </Typography>
-                  )}
-                  {autoSaveState === "error" && (
-                    <Typography sx={{ fontSize: "0.82rem", color: "#ef5b63", fontWeight: 600 }}>
-                      ✗ เกิดข้อผิดพลาดในการบันทึกข้อมูล
-                    </Typography>
-                  )}
-                  {(!autoSaveState || autoSaveState === "idle") && (
-                    <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", fontWeight: 500 }}>
-                      การตั้งค่าจะถูกบันทึกโดยอัตโนมัติเมื่อมีการเปลี่ยนแปลง
-                    </Typography>
-                  )}
-                </Box>
-              </>
-            )}
                 </Stack>
               </Box>
-        </CardContent>
-      </Card>
+            </CardContent>
+          </Card>
         </Box>
       </Stack>
 

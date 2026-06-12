@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { Box, Button, Card, CardContent, Chip, CircularProgress, Paper, Stack, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, TablePagination } from "@mui/material";
 import { Bot, Brain, History, Inbox, TrendingUp } from "lucide-react";
 import type { AiWatchlistItem, BotConfig, HistoryItem, PositionItem } from "./dashboardTypes";
+import { GeminiLogo, DeepSeekLogo } from "./Logos";
 
 type TradeHistoryRange = "7d" | "30d" | "month" | "year" | "all";
 
@@ -437,7 +438,18 @@ export function BotTradeView({ botConfig, positions, history, aiWatchlist, handl
   const strategyDisplayName = strategyDisplayNames[botConfig.strategy] || botConfig.strategy?.replace(/_/g, " ") || "multi indicator";
   const operationStats = [
     { label: "Strategy", value: strategyDisplayName, color: "text.primary" },
-    { label: "AI Review", value: botConfig.ai_enabled ? "AI On" : "Off", color: botConfig.ai_enabled ? "#60a5fa" : "text.secondary" },
+    {
+      label: "AI Review",
+      value: botConfig.ai_enabled ? (
+        <Box component="span" sx={{ display: "inline-flex", alignItems: "center", gap: 0.5, verticalAlign: "middle" }}>
+          {botConfig.ai_provider === "deepseek" ? <DeepSeekLogo size={14} /> : <GeminiLogo size={14} />}
+          <Box component="span" sx={{ ml: 0.5 }}>
+            {botConfig.ai_provider ? botConfig.ai_provider.charAt(0).toUpperCase() + botConfig.ai_provider.slice(1) : "Gemini"}
+          </Box>
+        </Box>
+      ) : "Off",
+      color: botConfig.ai_enabled ? (botConfig.ai_provider === "deepseek" ? "#a78bfa" : "#60a5fa") : "text.secondary"
+    },
     { label: "Stake", value: `${botConfig.stake_amount_thb} THB`, color: "text.primary" },
     { label: "Max Trades", value: `${positions.length} / ${maxTrades}`, color: positions.length >= maxTrades ? "#fbbf24" : "text.primary" },
     { label: "TP / SL", value: `+${botConfig.take_profit_pct}% / ${botConfig.stop_loss_pct}%`, color: "text.primary" },
