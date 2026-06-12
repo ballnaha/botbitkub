@@ -364,11 +364,30 @@ async def place_trade(trade: TradeRequest):
         else:
             path = "/api/v3/market/place-ask"
 
+        # Format amount and rate using bot helper if bot is initialized
+        if bot:
+            scales = bot.get_symbol_scales(standard_symbol)
+            qty_scale = scales["quantity_scale"]
+            price_scale = scales["price_scale"]
+            
+            if side == "sell":
+                formatted_amt = bot.floor_order_amount(trade.amount, qty_scale)
+            else:
+                if order_type == "market":
+                    formatted_amt = bot.floor_order_amount(trade.amount, 2)
+                else:
+                    formatted_amt = bot.floor_order_amount(trade.amount, qty_scale)
+                    
+            formatted_rat = bot.floor_order_amount(trade.price, price_scale) if order_type == "limit" else 0
+        else:
+            formatted_amt = trade.amount
+            formatted_rat = trade.price if order_type == "limit" else 0
+
         # Prepare payload
         body = {
             "sym": bitkub_symbol,
-            "amt": trade.amount,
-            "rat": trade.price if order_type == 'limit' else 0,
+            "amt": formatted_amt,
+            "rat": formatted_rat,
             "typ": order_type
         }
         
