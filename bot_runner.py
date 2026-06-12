@@ -63,6 +63,7 @@ class BotRunner:
         self.last_trade_error = ""
         self.last_wallet_reconcile_at = 0
         self.logs = []
+        self.symbol_metadata = {}
         self.thread = None
         self.stop_event = threading.Event()
         
@@ -73,9 +74,44 @@ class BotRunner:
         # เพิ่ม Log เริ่มต้น
         self.add_log("Bot system initialized with SQLite database.")
         
+        # Fetch symbol metadata for decimal precision
+        self.fetch_symbol_metadata()
+        
         # ถ้าเปิดไว้ในคอนฟิก ให้รันเมื่อเริ่มโปรแกรม
         if self.config.get("is_running", False):
             self.start()
+
+    def fetch_symbol_metadata(self):
+        try:
+            r = bitkub_http.get("https://api.bitkub.com/api/v3/market/symbols", timeout=8)
+            if r.status_code == 200:
+                data = r.json()
+                if data.get("error") == 0 or data.get("error") == "0":
+                    results = data.get("result", [])
+                    for item in results:
+                        base = item.get("base_asset", "").upper()
+                        quote = item.get("quote_asset", "").upper()
+                        std_symbol = f"{base}/{quote}"
+                        self.symbol_metadata[std_symbol] = {
+                            "quantity_scale": int(item.get("quantity_scale", 8)),
+                            "price_scale": int(item.get("price_scale", 2)),
+                            "min_quote_size": float(item.get("min_quote_size", 10.0))
+                        }
+                    self.add_log(f"Successfully loaded metadata for {len(self.symbol_metadata)} symbols from Bitkub.")
+                    return
+            self.add_log("Failed to fetch symbols metadata from Bitkub V3 API. Using default scales.")
+        except Exception as e:
+            self.add_log(f"Error fetching symbols metadata: {str(e)}")
+
+    def get_symbol_scales(self, symbol):
+        # Default scales
+        default = {"quantity_scale": 8, "price_scale": 2, "min_quote_size": 10.0}
+        
+        if not self.symbol_metadata:
+            self.fetch_symbol_metadata()
+            
+        std_symbol = symbol.upper()
+        return self.symbol_metadata.get(std_symbol, default)
 
     def get_active_strategy(self):
         strategy_name = self.config.get("strategy", "multi_indicator")
@@ -900,7 +936,9 @@ class BotRunner:
                     self.add_log(f"Live {base_asset} balance is lower than tracked position for {symbol}. Sell available amount {available_amount:.8f} instead of {amount:.8f}.")
                     amount = available_amount
 
-                amount = self.floor_order_amount(amount)
+                scales = self.get_symbol_scales(symbol)
+                qty_scale = scales["quantity_scale"]
+                amount = self.floor_order_amount(amount, qty_scale)
                 estimated_sell_value = amount * current_price
                 if amount <= 0:
                     self.last_trade_error = f"Sell amount is too small after precision adjustment for {symbol}."
@@ -1033,6 +1071,8 @@ class BotRunner:
                 self.add_log(f"Error reconciling LIVE position {symbol} with wallet: {str(e)}")
 
     def floor_order_amount(self, amount, decimals=8):
+        if decimals == 0:
+            return int(math.floor(float(amount)))
         factor = 10 ** decimals
         return math.floor(float(amount) * factor) / factor
 
@@ -1113,13 +1153,23 @@ class BotRunner:
         
         path = "/api/v3/market/place-bid" if side == "buy" else "/api/v3/market/place-ask"
 
-        amount_candidates = [float(amount)]
+        scales = self.get_symbol_scales(symbol)
+        qty_scale = scales["quantity_scale"]
+        price_scale = scales["price_scale"]
+
+        amount_candidates = []
         if side == "sell":
-            amount_candidates = []
             for decimals in (8, 6, 4, 2, 0):
-                candidate = self.floor_order_amount(amount, decimals)
-                if candidate > 0 and candidate not in amount_candidates:
+                if decimals <= qty_scale:
+                    candidate = self.floor_order_amount(amount, decimals)
+                    if candidate > 0 and candidate not in amount_candidates:
+                        amount_candidates.append(candidate)
+            if not amount_candidates:
+                candidate = self.floor_order_amount(amount, qty_scale)
+                if candidate > 0:
                     amount_candidates.append(candidate)
+        else:
+            amount_candidates = [self.floor_order_amount(amount, 2)]
         
         last_error = None
         retried_sell_with_bid_rate = False
@@ -1128,7 +1178,8 @@ class BotRunner:
             if side == "sell":
                 bid_price = self.get_current_bid_price(symbol)
                 if bid_price > 0:
-                    rate_candidates.append(bid_price)
+                    floored_bid = self.floor_order_amount(bid_price, price_scale)
+                    rate_candidates.append(floored_bid)
 
             for order_rate in rate_candidates:
                 body = {
