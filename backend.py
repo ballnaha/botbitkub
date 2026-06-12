@@ -350,11 +350,11 @@ async def place_trade(trade: TradeRequest):
         if order_type not in ['limit', 'market']:
             raise HTTPException(status_code=400, detail="Type must be 'limit' or 'market'")
 
-        # Map symbol from 'BTC/THB' to Bitkub pair format 'THB_BTC'
+        # Map symbol from 'BTC/THB' to Bitkub V3 pair format 'BTC_THB'
         standard_symbol = trade.symbol.upper()
         parts = standard_symbol.split('/')
         if len(parts) == 2:
-            bitkub_symbol = f"{parts[1]}_{parts[0]}".lower()
+            bitkub_symbol = f"{parts[0]}_{parts[1]}".lower()
         else:
             bitkub_symbol = standard_symbol.lower()
 
@@ -369,6 +369,7 @@ async def place_trade(trade: TradeRequest):
             scales = bot.get_symbol_scales(standard_symbol)
             qty_scale = scales["quantity_scale"]
             price_scale = scales["price_scale"]
+            bitkub_symbol = scales.get("symbol", f"{parts[0]}_{parts[1]}").lower()
             
             if side == "sell":
                 formatted_amt = bot.floor_order_amount(trade.amount, qty_scale)
@@ -391,9 +392,11 @@ async def place_trade(trade: TradeRequest):
             "typ": order_type
         }
         
+        print(f"DEBUG place_trade: body={body}, path={path}")
         headers = get_auth_headers("POST", path, body)
         response = await asyncio.to_thread(bitkub_http.post, BITKUB_HOST + path, json=body, headers=headers)
         res_json = response.json()
+        print(f"DEBUG place_trade: response={res_json}")
 
         error_code = res_json.get("error", 0)
         if error_code != 0:
@@ -445,7 +448,11 @@ async def get_open_orders(symbol: str = None):
         async def fetch_for_symbol(s):
             parts = s.split("/")
             if len(parts) == 2:
-                bitkub_symbol = f"{parts[1]}_{parts[0]}"
+                if bot:
+                    scales = bot.get_symbol_scales(s)
+                    bitkub_symbol = scales.get("symbol", f"{parts[0]}_{parts[1]}").lower()
+                else:
+                    bitkub_symbol = f"{parts[0]}_{parts[1]}"
             else:
                 bitkub_symbol = s
                 
@@ -485,7 +492,11 @@ async def post_cancel_order(req: CancelOrderRequest):
     try:
         parts = req.symbol.split("/")
         if len(parts) == 2:
-            bitkub_symbol = f"{parts[1]}_{parts[0]}"
+            if bot:
+                scales = bot.get_symbol_scales(req.symbol)
+                bitkub_symbol = scales.get("symbol", f"{parts[0]}_{parts[1]}").lower()
+            else:
+                bitkub_symbol = f"{parts[0]}_{parts[1]}"
         else:
             bitkub_symbol = req.symbol
             
@@ -546,7 +557,11 @@ async def get_order_history(symbol: str = None):
         async def fetch_for_symbol(s):
             parts = s.split("/")
             if len(parts) == 2:
-                bitkub_symbol = f"{parts[1]}_{parts[0]}"
+                if bot:
+                    scales = bot.get_symbol_scales(s)
+                    bitkub_symbol = scales.get("symbol", f"{parts[0]}_{parts[1]}").lower()
+                else:
+                    bitkub_symbol = f"{parts[0]}_{parts[1]}"
             else:
                 bitkub_symbol = s
                 

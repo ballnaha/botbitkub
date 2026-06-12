@@ -93,6 +93,7 @@ class BotRunner:
                         quote = item.get("quote_asset", "").upper()
                         std_symbol = f"{base}/{quote}"
                         self.symbol_metadata[std_symbol] = {
+                            "symbol": item.get("symbol", f"{base}_{quote}"),
                             "quantity_scale": int(item.get("quantity_scale", 8)),
                             "price_scale": int(item.get("price_scale", 2)),
                             "min_quote_size": float(item.get("min_quote_size", 10.0))
@@ -1149,7 +1150,7 @@ class BotRunner:
             raise ValueError("API Keys are not configured. Cannot place real trade.")
             
         parts = symbol.upper().split('/')
-        bitkub_symbol = f"{parts[1]}_{parts[0]}".lower() if len(parts) == 2 else symbol.lower()
+        bitkub_symbol = f"{parts[0]}_{parts[1]}".lower() if len(parts) == 2 else symbol.lower()
         
         path = "/api/v3/market/place-bid" if side == "buy" else "/api/v3/market/place-ask"
 
