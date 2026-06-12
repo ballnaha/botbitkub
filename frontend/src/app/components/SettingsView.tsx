@@ -785,7 +785,20 @@ export function SettingsView({
                       return (
                         <Paper
                           key={strat.id}
-                          onClick={() => updateBotConfigDraft({ strategy: strat.id } as Partial<BotConfig>)}
+                          onClick={() => {
+                            const patch: Partial<BotConfig> = { strategy: strat.id };
+                            if (strat.risk_level === "low") {
+                              patch.ai_min_score = 75;
+                              patch.ai_min_confidence = 0.65;
+                            } else if (strat.risk_level === "medium") {
+                              patch.ai_min_score = 65;
+                              patch.ai_min_confidence = 0.55;
+                            } else if (strat.risk_level === "high") {
+                              patch.ai_min_score = 50;
+                              patch.ai_min_confidence = 0.45;
+                            }
+                            updateBotConfigDraft(patch);
+                          }}
                           sx={{
                             p: 1.5,
                             borderRadius: "12px",

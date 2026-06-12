@@ -10,7 +10,7 @@ DEFAULT_AI_RESULT = {
     "decision": "buy",
     "score": 70,
     "confidence": 0.5,
-    "reason": "AI analyzer unavailable; falling back to strategy signal.",
+    "reason": "AI รีวิวขัดข้องชั่วคราว กำลังใช้สัญญาณเทคนิคัลหลักแทน",
     "replace_candidate": "",
 }
 
@@ -19,9 +19,40 @@ class GeminiTradeAnalyzer:
     def __init__(self):
         self.session = requests.Session()
         self.session.trust_env = False
+        self.request_timestamps = []
+
+    def _wait_for_rate_limit(self):
+        import time
+        now = time.time()
+        # Keep only timestamps in the last 60 seconds
+        self.request_timestamps = [t for t in self.request_timestamps if now - t < 60]
+        
+        # Safe limit: max 12 requests per minute (below 15 RPM)
+        limit = 12
+        if len(self.request_timestamps) >= limit:
+            oldest_t = self.request_timestamps[0]
+            sleep_time = 60 - (now - oldest_t)
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+                now = time.time()
+                self.request_timestamps = [t for t in self.request_timestamps if now - t < 60]
+        
+        self.request_timestamps.append(now)
 
     def is_configured(self) -> bool:
         return bool(os.getenv("GEMINI_API_KEY"))
+
+    def _sanitize_floats(self, obj):
+        import math
+        if isinstance(obj, dict):
+            return {k: self._sanitize_floats(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self._sanitize_floats(x) for x in obj]
+        elif isinstance(obj, float):
+            if math.isnan(obj) or math.isinf(obj):
+                return None
+            return obj
+        return obj
 
     def analyze_buy_signal(
         self,
@@ -30,12 +61,18 @@ class GeminiTradeAnalyzer:
         positions_snapshot: Dict[str, Any],
         config: Dict[str, Any],
     ) -> Dict[str, Any]:
+        market_snapshot = self._sanitize_floats(market_snapshot)
+        positions_snapshot = self._sanitize_floats(positions_snapshot)
+        
         api_key = os.getenv("GEMINI_API_KEY")
         if not api_key:
             return {
                 **DEFAULT_AI_RESULT,
-                "reason": "GEMINI_API_KEY is not configured; strategy signal allowed without AI review.",
+                "reason": "ยังไม่ได้ตั้งค่า GEMINI_API_KEY ในไฟล์ .env | บอทจะใช้สัญญาณจากกลยุทธ์โดยไม่ผ่านการกรอง",
             }
+
+        # Enforce rate limit (max 12 requests per 60 seconds)
+        self._wait_for_rate_limit()
 
         model = config.get("ai_model") or "gemini-3.5-flash"
         timeout = float(config.get("ai_timeout_seconds", 8))
@@ -46,37 +83,33 @@ class GeminiTradeAnalyzer:
             "contents": [{"parts": [{"text": prompt}]}],
             "generationConfig": {
                 "temperature": 0.2,
-                "responseFormat": {
-                    "text": {
-                        "mimeType": "application/json",
-                        "schema": {
-                            "type": "object",
-                            "properties": {
-                                "decision": {
-                                    "type": "string",
-                                    "enum": ["buy", "watch", "skip"],
-                                    "description": "buy if the signal is strong enough, watch if promising but not enough, skip if weak or risky.",
-                                },
-                                "score": {
-                                    "type": "integer",
-                                    "description": "Opportunity score from 0 to 100.",
-                                },
-                                "confidence": {
-                                    "type": "number",
-                                    "description": "Confidence from 0.0 to 1.0.",
-                                },
-                                "reason": {
-                                    "type": "string",
-                                    "description": "Short practical reason for the decision.",
-                                },
-                                "replace_candidate": {
-                                    "type": "string",
-                                    "description": "Weakest current position symbol if a replacement should be considered, otherwise empty string.",
-                                },
-                            },
-                            "required": ["decision", "score", "confidence", "reason", "replace_candidate"],
+                "responseMimeType": "application/json",
+                "responseSchema": {
+                    "type": "OBJECT",
+                    "properties": {
+                        "decision": {
+                            "type": "STRING",
+                            "enum": ["buy", "watch", "skip"],
+                            "description": "buy if the signal is strong enough, watch if promising but not enough, skip if weak or risky.",
                         },
-                    }
+                        "score": {
+                            "type": "INTEGER",
+                            "description": "Opportunity score from 0 to 100.",
+                        },
+                        "confidence": {
+                            "type": "NUMBER",
+                            "description": "Confidence from 0.0 to 1.0.",
+                        },
+                        "reason": {
+                            "type": "STRING",
+                            "description": "Short practical reason for the decision. MUST write this explanation in THAI language only.",
+                        },
+                        "replace_candidate": {
+                            "type": "STRING",
+                            "description": "Weakest current position symbol if a replacement should be considered, otherwise empty string.",
+                        },
+                    },
+                    "required": ["decision", "score", "confidence", "reason", "replace_candidate"],
                 },
             },
         }
@@ -125,7 +158,7 @@ class GeminiTradeAnalyzer:
             "The strategy has already produced a BUY signal. Your job is only to score and filter it. "
             "Do not invent prices. Prefer watch/skip when score or confidence is weak. "
             "If slots are full, do not force a buy; use watch and optionally name a weak replace_candidate. "
-            "Return only JSON that matches the schema.\n\n"
+            "CRITICAL: Write the 'reason' field in the JSON output in THAI language only.\n\n"
             f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}"
         )
 
@@ -151,7 +184,7 @@ class GeminiTradeAnalyzer:
             "decision": decision,
             "score": score,
             "confidence": confidence,
-            "reason": reason or "No AI reason provided.",
+            "reason": reason or "ไม่ได้รับคำชี้แจงเหตุผลจาก AI",
             "replace_candidate": replace_candidate,
             "analyzed_at": int(time.time()),
         }

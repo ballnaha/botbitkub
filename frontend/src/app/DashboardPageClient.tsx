@@ -61,6 +61,7 @@ const BotTradeView = dynamic(() => import("./components/BotTradeView").then((mod
 const LogsView = dynamic(() => import("./components/LogsView").then((mod) => mod.LogsView));
 const ManualTradeView = dynamic(() => import("./components/ManualTradeView").then((mod) => mod.ManualTradeView));
 const SettingsView = dynamic(() => import("./components/SettingsView").then((mod) => mod.SettingsView));
+const WalletView = dynamic(() => import("./components/WalletView").then((mod) => mod.WalletView));
 
 interface BalanceItem {
   asset: string;
@@ -81,12 +82,13 @@ interface TickerData {
   quoteVolume: number;
 }
 
-type DashboardView = "bot" | "manual" | "settings";
+type DashboardView = "bot" | "manual" | "wallet" | "settings";
 
 const DEFAULT_TRADE_SYMBOL_OPTIONS = ["BTC/THB", "ETH/THB", "KUB/THB", "XRP/THB", "USDT/THB"];
 const DASHBOARD_ROUTES: Record<DashboardView, string> = {
   bot: "/bot",
   manual: "/manual",
+  wallet: "/wallet",
   settings: "/settings",
 };
 
@@ -196,6 +198,7 @@ function NumberStepper({ value, step, min, onChange, suffix }: NumberStepperProp
 
 function getDashboardView(pathname: string | null): DashboardView {
   if (pathname?.startsWith("/manual")) return "manual";
+  if (pathname?.startsWith("/wallet")) return "wallet";
   if (pathname?.startsWith("/settings")) return "settings";
   return "bot";
 }
@@ -892,6 +895,12 @@ export default function DashboardPageClient() {
     botConfig.max_budget_thb,
     botConfig.strategy,
     botConfig.symbols,
+    botConfig.ai_enabled,
+    botConfig.ai_provider,
+    botConfig.ai_model,
+    botConfig.ai_min_score,
+    botConfig.ai_min_confidence,
+    botConfig.ai_timeout_seconds,
     initialLoading,
   ]);
 
@@ -1063,6 +1072,11 @@ export default function DashboardPageClient() {
       description: "Realtime market order desk",
       icon: <Send size={15} />,
     },
+    wallet: {
+      title: "My Wallet",
+      description: "Portfolio balance and asset allocation",
+      icon: <Wallet size={15} />,
+    },
     settings: {
       title: "Settings",
       description: "Risk controls and API preferences",
@@ -1072,6 +1086,7 @@ export default function DashboardPageClient() {
   const navigationItems = [
     { id: "bot", label: "Bot Trade", icon: <Bot size={15} /> },
     { id: "manual", label: "Manual Trade", icon: <Send size={15} /> },
+    { id: "wallet", label: "My Wallet", icon: <Wallet size={15} /> },
     { id: "settings", label: "Settings", icon: <Sliders size={15} /> },
   ] as const;
 
@@ -1408,7 +1423,7 @@ export default function DashboardPageClient() {
         </Paper>
 
         {/* KPI Metrics Box Layout */}
-        {activeView !== "settings" && (
+        {activeView !== "settings" && activeView !== "wallet" && (
         <Box
           sx={{
             display: "grid",
@@ -1700,6 +1715,12 @@ export default function DashboardPageClient() {
                 }, 2000);
               });
             }}
+          />
+        )}
+
+        {activeView === "wallet" && (
+          <WalletView
+            setActiveView={setActiveView}
           />
         )}
 

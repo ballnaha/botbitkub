@@ -69,11 +69,25 @@ def build_exe():
     print(f"Executing: {' '.join(cmd)}")
     subprocess.run(cmd, check=True)
     
-    # Copy .env config file to dist folder if it exists in current workspace
+    # Copy .env config file and other templates to dist folder if they exist
     dist_dir = os.path.join(os.getcwd(), "dist", "BitkubMiniBot")
     if os.path.exists(".env"):
-        print("Copying .env template file to release folder...")
+        print("Copying .env file to release folder...")
         shutil.copy(".env", os.path.join(dist_dir, ".env"))
+    elif os.path.exists(".env.example"):
+        print("Copying .env.example as .env to release folder...")
+        shutil.copy(".env.example", os.path.join(dist_dir, ".env"))
+
+    if os.path.exists(".env.example"):
+        shutil.copy(".env.example", os.path.join(dist_dir, ".env.example"))
+        shutil.copy(".env.example", os.path.join(os.getcwd(), "dist", ".env.example"))
+
+    if os.path.exists("README.md"):
+        print("Copying README files to release folder...")
+        shutil.copy("README.md", os.path.join(dist_dir, "README.md"))
+        shutil.copy("README.md", os.path.join(dist_dir, "README.txt"))
+        shutil.copy("README.md", os.path.join(os.getcwd(), "dist", "README.md"))
+        shutil.copy("README.md", os.path.join(os.getcwd(), "dist", "README.txt"))
         
     print("\n--- Build Complete ---")
     print(f"Standalone application folder is available at: {dist_dir}")

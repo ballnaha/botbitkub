@@ -8,7 +8,7 @@ interface FooterProps {
   wsConnected?: boolean;
   backendConnected?: boolean;
   activeView?: string;
-  setActiveView?: (view: "bot" | "manual" | "settings") => void;
+  setActiveView?: (view: any) => void;
 }
 
 export function Footer({

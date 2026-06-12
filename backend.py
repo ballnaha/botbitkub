@@ -309,19 +309,11 @@ async def get_tickers():
         response = await asyncio.to_thread(bitkub_http.get, url)
         data = response.json()
         
-        symbols = bot.config.get("symbols", []) if bot else ["BTC/THB", "ETH/THB", "KUB/THB", "XRP/THB", "USDT/THB"]
-        symbols_map = {}
-        for s in symbols:
-            parts = s.split("/")
-            if len(parts) == 2:
-                symbols_map[s] = f"THB_{parts[0]}"
-            else:
-                symbols_map[s] = s
-        
         parsed_tickers = {}
-        for standard_symbol, bitkub_symbol in symbols_map.items():
-            if bitkub_symbol in data:
-                t = data[bitkub_symbol]
+        for key, t in data.items():
+            if key.startswith("THB_"):
+                base = key.split("_", 1)[1]
+                standard_symbol = f"{base}/THB"
                 parsed_tickers[standard_symbol] = {
                     "last": t.get("last"),
                     "bid": t.get("highestBid"),
@@ -743,6 +735,187 @@ async def get_bot_ai_watchlist():
     if not bot:
         return []
     return bot.get_ai_watchlist()
+
+@app.get("/api/bot/wallet-summary")
+async def get_bot_wallet_summary():
+    if not bot:
+        raise HTTPException(status_code=500, detail="Bot not initialized.")
+
+    dry_run = bot.config.get("dry_run", True)
+    
+    # Fetch current ticker prices to convert coin balances to THB
+    ticker_data = {}
+    try:
+        url = "https://api.bitkub.com/api/market/ticker"
+        r = await asyncio.to_thread(bitkub_http.get, url, timeout=5)
+        if r.status_code == 200:
+            ticker_data = r.json()
+    except Exception as e:
+        print(f"Error fetching ticker for wallet summary: {e}")
+
+    # Helper to get ticker price
+    def get_coin_price(coin):
+        coin = coin.upper()
+        if coin == "THB":
+            return 1.0
+        bitkub_symbol = f"THB_{coin}"
+        if bitkub_symbol in ticker_data:
+            return float(ticker_data[bitkub_symbol].get("last", 0.0))
+        return 0.0
+
+    assets = []
+    total_balance_thb = 0.0
+    total_invested_thb = 0.0
+
+    if dry_run:
+        # Dry-run wallet simulation
+        max_budget = float(bot.config.get("max_budget_thb", 5000.0))
+        
+        # Calculate budget in use by active positions
+        invested = 0.0
+        for symbol, pos in bot.positions.items():
+            invested += float(pos.get("amount", 0.0)) * float(pos.get("buy_price", 0.0))
+            
+        available_thb = max(0.0, max_budget - invested)
+        
+        # Add THB cash asset
+        assets.append({
+            "currency": "THB",
+            "available": available_thb,
+            "reserved": 0.0,
+            "total": available_thb,
+            "value_thb": available_thb,
+            "current_price": 1.0,
+            "avg_entry_price": 1.0,
+            "pnl_percent": 0.0,
+            "pnl_thb": 0.0
+        })
+        total_balance_thb += available_thb
+
+        # Add coin assets from active positions
+        for symbol, pos in bot.positions.items():
+            base_coin = symbol.split("/")[0].upper()
+            amount = float(pos.get("amount", 0.0))
+            buy_price = float(pos.get("buy_price", 0.0))
+            current_price = get_coin_price(base_coin) or buy_price
+            
+            pnl_percent = ((current_price - buy_price) / buy_price) * 100
+            pnl_thb = (amount * current_price * 0.9975) - (amount * buy_price)
+            value_thb = amount * current_price
+            
+            assets.append({
+                "currency": base_coin,
+                "available": amount,
+                "reserved": 0.0,
+                "total": amount,
+                "value_thb": value_thb,
+                "current_price": current_price,
+                "avg_entry_price": buy_price,
+                "pnl_percent": pnl_percent,
+                "pnl_thb": pnl_thb
+            })
+            total_balance_thb += value_thb
+            total_invested_thb += (amount * buy_price)
+
+    else:
+        # LIVE wallet fetching
+        api_key = os.getenv("BITKUB_API_KEY")
+        api_secret = os.getenv("BITKUB_API_SECRET")
+        if are_credentials_placeholder(api_key, api_secret):
+            raise HTTPException(status_code=400, detail="API credentials are not configured in the .env file.")
+
+        try:
+            path = "/api/v4/wallet/balances"
+            headers = get_auth_headers("GET", path)
+            response = await asyncio.to_thread(bitkub_http.get, BITKUB_HOST + path, headers=headers, timeout=8)
+            res_json = response.json()
+            
+            code = res_json.get("code")
+            if code not in ("0", 0):
+                raise ValueError(f"Bitkub balance API error (Code {code}): {res_json.get('message')}")
+            
+            balances_data = res_json.get("data", [])
+            raw_balances = []
+            if isinstance(balances_data, list):
+                raw_balances = balances_data
+            elif isinstance(balances_data, dict):
+                for curr, val in balances_data.items():
+                    if isinstance(val, dict):
+                        raw_balances.append({
+                            "currency": curr.upper(),
+                            "available": float(val.get("available", 0.0) or 0.0),
+                            "reserved": float(val.get("reserved", 0.0) or 0.0)
+                        })
+                    else:
+                        raw_balances.append({
+                            "currency": curr.upper(),
+                            "available": float(val or 0.0),
+                            "reserved": 0.0
+                        })
+
+            # Process assets
+            for item in raw_balances:
+                curr = item.get("currency", "").upper()
+                available = float(item.get("available", 0.0) or 0.0)
+                reserved = float(item.get("reserved", 0.0) or 0.0)
+                total = available + reserved
+                
+                # Filter out microscopic balances to keep UI clean, but always keep THB
+                if total <= 0.000001 and curr != "THB":
+                    continue
+                
+                current_price = get_coin_price(curr)
+                value_thb = total * current_price if curr != "THB" else total
+                
+                # Check if we have an active position tracked for this symbol (curr/THB)
+                pair_symbol = f"{curr}/THB"
+                avg_entry_price = None
+                pnl_percent = 0.0
+                pnl_thb = 0.0
+                
+                if pair_symbol in bot.positions:
+                    pos = bot.positions[pair_symbol]
+                    avg_entry_price = float(pos.get("buy_price", 0.0))
+                    pnl_percent = float(pos.get("pnl_percent", 0.0))
+                    pnl_thb = float(pos.get("pnl_thb", 0.0))
+                    total_invested_thb += (float(pos.get("amount", 0.0)) * avg_entry_price)
+                
+                assets.append({
+                    "currency": curr,
+                    "available": available,
+                    "reserved": reserved,
+                    "total": total,
+                    "value_thb": value_thb,
+                    "current_price": current_price if curr != "THB" else 1.0,
+                    "avg_entry_price": avg_entry_price,
+                    "pnl_percent": pnl_percent,
+                    "pnl_thb": pnl_thb
+                })
+                total_balance_thb += value_thb
+
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch live balances: {str(e)}")
+
+    # Calculate overall stats
+    overall_pnl_thb = 0.0
+    overall_pnl_percent = 0.0
+    
+    for asset in assets:
+        if asset["avg_entry_price"] is not None and asset["currency"] != "THB":
+            overall_pnl_thb += asset["pnl_thb"]
+            
+    if total_invested_thb > 0:
+        overall_pnl_percent = (overall_pnl_thb / total_invested_thb) * 100
+
+    return {
+        "status": "success",
+        "dry_run": dry_run,
+        "total_balance_thb": total_balance_thb,
+        "total_invested_thb": total_invested_thb,
+        "overall_pnl_thb": overall_pnl_thb,
+        "overall_pnl_percent": overall_pnl_percent,
+        "assets": assets
+    }
 
 @app.get("/api/bot/logs")
 async def get_bot_logs():

@@ -94,7 +94,7 @@ class BotRunner:
                         std_symbol = f"{base}/{quote}"
                         self.symbol_metadata[std_symbol] = {
                             "symbol": item.get("symbol", f"{base}_{quote}"),
-                            "quantity_scale": int(item.get("quantity_scale", 8)),
+                            "quantity_scale": max(int(item.get("quantity_scale", 8)), int(item.get("base_asset_scale", 8))),
                             "price_scale": int(item.get("price_scale", 2)),
                             "min_quote_size": float(item.get("min_quote_size", 10.0))
                         }
@@ -601,10 +601,10 @@ class BotRunner:
 
     # ดึงประวัติกราฟ TradingView จาก Bitkub
     def fetch_ohlcv(self, symbol, timeframe="15", limit=100):
-        # แปลงชื่อคู่เหรียญเป็นแบบ Bitkub เช่น BTC/THB -> THB_BTC
+        # แปลงชื่อคู่เหรียญเป็นแบบ Bitkub เช่น BTC/THB -> BTC_THB
         parts = symbol.upper().split('/')
         if len(parts) == 2:
-            bitkub_symbol = f"{parts[1]}_{parts[0]}"
+            bitkub_symbol = f"{parts[0]}_{parts[1]}"
         else:
             bitkub_symbol = symbol
             
@@ -983,7 +983,7 @@ class BotRunner:
                     self.save_history_db(trade_record)
                     
                     remaining_amount = amount - sold_amount
-                    if remaining_amount > 0.00000001:
+                    if remaining_amount > 0.00000001 and "Panic Sell" not in reason:
                         position["amount"] = remaining_amount
                         position["current_price"] = current_price
                         position["pnl_percent"] = ((current_price - buy_price) / buy_price) * 100
@@ -1075,7 +1075,10 @@ class BotRunner:
         if decimals == 0:
             return int(math.floor(float(amount)))
         factor = 10 ** decimals
-        return math.floor(float(amount) * factor) / factor
+        val = math.floor(float(amount) * factor) / factor
+        if val.is_integer():
+            return int(val)
+        return val
 
     def get_current_bid_price(self, symbol):
         parts = symbol.upper().split("/")
