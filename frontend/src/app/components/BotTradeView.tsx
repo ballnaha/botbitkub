@@ -18,23 +18,31 @@ const strategyDisplayNames: Record<string, string> = {
   macd_rsi: "เล่นตามจังหวะกลับตัว (Safe Reversal)",
   multi_indicator: "วิเคราะห์รอบด้าน (Balanced Signal)",
   aggressive_momentum: "เก็งกำไรเร็ว (Fast Breakout)",
+  supertrend_ema: "เทรดตามเทรนด์ (Trend Following)",
+  bounce_scalper: "เก็บเด้งขาลง (Bounce Scalper)",
 };
+
+const aiDecisionNotes = [
+  { label: "BUY", color: "#00c16a", description: "AI อนุมัติให้ซื้อ ถ้าคะแนนและความมั่นใจผ่านเกณฑ์บอทจะพยายามเปิดออเดอร์" },
+  { label: "WATCH", color: "#fbbf24", description: "AI ให้เฝ้าดู ยังไม่ควรซื้อทันที" },
+  { label: "SKIP", color: "#ef5b63", description: "AI ไม่แนะนำให้ซื้อในรอบวิเคราะห์นี้" },
+];
+
+const aiStatusNotes = [
+  { label: "ACTIVE", color: "#94a3b8", description: "สัญญาณล่าสุดยังอยู่ในรายการเฝ้าดู ยังไม่ได้ถูกใช้เปิดออเดอร์" },
+  { label: "USED", color: "#00c16a", description: "สัญญาณนี้ถูกใช้แล้ว บอทนำไปเปิดออเดอร์ซื้อสำเร็จ" },
+  { label: "SKIPPED", color: "#ef5b63", description: "สัญญาณถูกข้าม เพราะไม่ผ่านเงื่อนไข เช่น decision/score/confidence หรืองบไม่พอ" },
+];
 
 type PnLDataPoint = {
   pnl: number;
   label: string;
   time: string;
   tradeNumber: number;
-};
-
-type PnLBarPoint = {
-  pnl: number;
-  startTrade: number;
-  endTrade: number;
+  timestamp: number;
 };
 
 const MAX_EQUITY_RENDER_POINTS = 280;
-const MAX_PNL_RENDER_BARS = 120;
 
 function parseHistoryDate(value: string) {
   if (!value) return null;
@@ -95,6 +103,19 @@ function filterHistoryByRange(history: HistoryItem[], range: TradeHistoryRange) 
   });
 }
 
+function getHistoryTimeValue(value: string, fallbackIndex: number) {
+  const parsed = parseHistoryDate(value);
+  return parsed ? parsed.getTime() : fallbackIndex;
+}
+
+function formatCompactTHB(value: number) {
+  const abs = Math.abs(value);
+  const sign = value < 0 ? "-" : "";
+  if (abs >= 1_000_000) return `${sign}${(abs / 1_000_000).toFixed(abs >= 10_000_000 ? 0 : 1)}M`;
+  if (abs >= 1_000) return `${sign}${(abs / 1_000).toFixed(abs >= 10_000 ? 0 : 1)}K`;
+  return `${sign}${abs.toFixed(0)}`;
+}
+
 function downsampleEquityPoints(points: PnLDataPoint[], maxPoints = MAX_EQUITY_RENDER_POINTS) {
   if (points.length <= maxPoints) return points;
 
@@ -128,30 +149,6 @@ function downsampleEquityPoints(points: PnLDataPoint[], maxPoints = MAX_EQUITY_R
   return sampled;
 }
 
-function aggregatePnLBars(trades: HistoryItem[], maxBars = MAX_PNL_RENDER_BARS) {
-  if (trades.length <= maxBars) {
-    return trades.map((trade, index) => ({
-      pnl: trade.pnl_thb || 0,
-      startTrade: index + 1,
-      endTrade: index + 1,
-    }));
-  }
-
-  const bucketSize = Math.ceil(trades.length / maxBars);
-  const bars: PnLBarPoint[] = [];
-
-  for (let start = 0; start < trades.length; start += bucketSize) {
-    const bucket = trades.slice(start, start + bucketSize);
-    bars.push({
-      pnl: bucket.reduce((sum, trade) => sum + (trade.pnl_thb || 0), 0),
-      startTrade: start + 1,
-      endTrade: start + bucket.length,
-    });
-  }
-
-  return bars;
-}
-
 function PnLChart({ history }: { history: HistoryItem[] }) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
@@ -160,11 +157,12 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
 
   const dataPoints = useMemo(() => {
     let runningTotal = 0;
-    const points: PnLDataPoint[] = [{ pnl: 0, label: "เริ่มต้น", time: "", tradeNumber: 0 }];
+    const firstTradeTime = closed.length > 0 ? getHistoryTimeValue(closed[0].timestamp || "", 0) : 0;
+    const points: PnLDataPoint[] = [{ pnl: 0, label: "เริ่มต้น", time: "", tradeNumber: 0, timestamp: firstTradeTime }];
 
     if (closed.length === 0) {
-      points.push({ pnl: 0, label: "ไม่มีข้อมูล", time: "", tradeNumber: 1 });
-      points.push({ pnl: 0, label: "ไม่มีข้อมูล", time: "", tradeNumber: 2 });
+      points.push({ pnl: 0, label: "ไม่มีข้อมูล", time: "", tradeNumber: 1, timestamp: 1 });
+      points.push({ pnl: 0, label: "ไม่มีข้อมูล", time: "", tradeNumber: 2, timestamp: 2 });
       return points;
     }
 
@@ -175,6 +173,7 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
         label: `${t.symbol} (${t.pnl_thb && t.pnl_thb > 0 ? "+" : ""}${(t.pnl_percent || 0).toFixed(1)}%)`,
         time: t.timestamp || "",
         tradeNumber: index + 1,
+        timestamp: getHistoryTimeValue(t.timestamp || "", index + 1),
       });
     });
 
@@ -182,146 +181,244 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
   }, [closed]);
 
   const displayPoints = useMemo(() => downsampleEquityPoints(dataPoints), [dataPoints]);
-  const barPoints = useMemo(() => aggregatePnLBars(closed), [closed]);
   const cumulative = dataPoints[dataPoints.length - 1]?.pnl || 0;
   const pnls = dataPoints.map((d) => d.pnl);
-  const maxVal = Math.max(...pnls);
-  const minVal = Math.min(...pnls);
-  const valRange = maxVal === minVal ? 10 : maxVal - minVal;
 
-  const maxSinglePnl = useMemo(() => {
-    if (isEmpty) return 10;
-    const values = barPoints.map((t) => Math.abs(t.pnl || 0));
-    const max = Math.max(...values);
-    return max === 0 ? 10 : max;
-  }, [barPoints, isEmpty]);
+  // สรุปสถิติเชิงปริมาณ (มาตรฐาน equity curve มืออาชีพ)
+  const metrics = useMemo(() => {
+    if (isEmpty) {
+      return { net: 0, peak: 0, maxDD: 0, ddPeakTs: null as number | null, ddTroughTs: null as number | null, winRate: 0, trades: 0 };
+    }
+    let curPeakVal = dataPoints[0].pnl;
+    let curPeakTs = dataPoints[0].timestamp;
+    let peak = dataPoints[0].pnl;
+    let maxDD = 0;
+    let ddPeakTs: number | null = null;
+    let ddTroughTs: number | null = null;
+    for (const p of dataPoints) {
+      if (p.pnl > curPeakVal) { curPeakVal = p.pnl; curPeakTs = p.timestamp; }
+      if (p.pnl > peak) peak = p.pnl;
+      const dd = curPeakVal - p.pnl;
+      if (dd > maxDD) { maxDD = dd; ddPeakTs = curPeakTs; ddTroughTs = p.timestamp; }
+    }
+    const wins = closed.filter((c) => (c.pnl_thb || 0) > 0).length;
+    return {
+      net: dataPoints[dataPoints.length - 1].pnl,
+      peak,
+      maxDD,
+      ddPeakTs,
+      ddTroughTs,
+      winRate: closed.length ? (wins / closed.length) * 100 : 0,
+      trades: closed.length,
+    };
+  }, [dataPoints, closed, isEmpty]);
 
-  const width = 600;
-  const height = 150;
-  const paddingX = 40;
-  const paddingY = 20;
-  const chartWidth = width - paddingX * 2;
-  const chartHeight = height - paddingY * 2;
-  const tradeCountForScale = Math.max(1, closed.length);
+  // แท่ง PnL ต่อเทรด (รวมเป็น bucket ถ้ามากเกินไป เพื่อให้แท่งกว้างพอ)
+  const bars = useMemo(() => {
+    if (isEmpty) return [] as { pnl: number; timestamp: number }[];
+    const maxBars = 60;
+    const src = closed.map((t, i) => ({ pnl: t.pnl_thb || 0, timestamp: getHistoryTimeValue(t.timestamp || "", i + 1) }));
+    if (src.length <= maxBars) return src;
+    const bucketSize = Math.ceil(src.length / maxBars);
+    const out: { pnl: number; timestamp: number }[] = [];
+    for (let s = 0; s < src.length; s += bucketSize) {
+      const b = src.slice(s, s + bucketSize);
+      out.push({ pnl: b.reduce((a, c) => a + c.pnl, 0), timestamp: b[Math.floor(b.length / 2)].timestamp });
+    }
+    return out;
+  }, [closed, isEmpty]);
 
-  const points = displayPoints.map((d) => {
-    const x = paddingX + (d.tradeNumber / tradeCountForScale) * chartWidth;
-    const y = paddingY + chartHeight - ((d.pnl - minVal) / valRange) * chartHeight;
-    return { x, y, pnl: d.pnl, label: d.label, time: d.time, tradeNumber: d.tradeNumber };
-  });
+  const maxAbsBar = useMemo(() => {
+    const m = Math.max(...bars.map((b) => Math.abs(b.pnl)), 0);
+    return m === 0 ? 1 : m;
+  }, [bars]);
 
-  const zeroY = paddingY + chartHeight - ((0 - minVal) / valRange) * chartHeight;
-  const hasZeroLine = zeroY >= paddingY && zeroY <= (paddingY + chartHeight);
+  // ----- เรขาคณิตของกราฟ (minimal) -----
+  const width = 680;
+  const height = 132;
+  const padTop = 8;
+  const padBottom = 16;
+  const padLeft = 10;
+  const padRight = 10;
+  const chartWidth = width - padLeft - padRight;
+  const chartHeight = height - padTop - padBottom;
+  const chartBottom = padTop + chartHeight;
+
+  const timeValues = dataPoints.map((d) => d.timestamp);
+  const minTime = Math.min(...timeValues);
+  const maxTime = Math.max(...timeValues);
+  const timeRange = maxTime === minTime ? 1 : maxTime - minTime;
+
+  // โดเมนแกน Y รวม 0 เสมอ + เผื่อขอบบน/ล่าง 12%
+  const rawMax = Math.max(...pnls, 0);
+  const rawMin = Math.min(...pnls, 0);
+  const span = rawMax - rawMin || 10;
+  const yMax = rawMax + span * 0.12;
+  const yMin = rawMin - span * 0.12;
+  const valRange = yMax - yMin || 10;
+
+  const xScale = (ts: number) => padLeft + ((ts - minTime) / timeRange) * chartWidth;
+  const yScale = (v: number) => padTop + chartHeight - ((v - yMin) / valRange) * chartHeight;
+
+  const points = displayPoints.map((d) => ({
+    x: xScale(d.timestamp),
+    y: yScale(d.pnl),
+    pnl: d.pnl,
+    label: d.label,
+    time: d.time,
+    tradeNumber: d.tradeNumber,
+    timestamp: d.timestamp,
+  }));
+
+  const zeroY = yScale(0);
 
   let linePath = "";
   let areaPath = "";
   if (points.length > 0) {
     linePath = `M ${points[0].x} ${points[0].y} ` + points.slice(1).map((p) => `L ${p.x} ${p.y}`).join(" ");
-    areaPath = linePath + ` L ${points[points.length - 1].x} ${paddingY + chartHeight} L ${points[0].x} ${paddingY + chartHeight} Z`;
+    areaPath = linePath + ` L ${points[points.length - 1].x} ${chartBottom} L ${points[0].x} ${chartBottom} Z`;
   }
 
   const isNetProfit = cumulative >= 0;
-  const strokeColor = isEmpty ? "rgba(255,255,255,0.08)" : (isNetProfit ? "#00c16a" : "#ef5b63");
-  const gradientId = "pnl-area-gradient";
+  const strokeColor = isEmpty ? "rgba(255,255,255,0.10)" : (isNetProfit ? "#00c16a" : "#ef5b63");
+  const gradientId = "equity-area-gradient";
+
+  const lastPoint = points[points.length - 1];
+
+  const kpis = [
+    {
+      label: "NET",
+      value: `${isNetProfit ? "+" : ""}${formatCompactTHB(metrics.net)} THB`,
+      color: isEmpty ? "#94a3b8" : (isNetProfit ? "#00c16a" : "#ef5b63"),
+    },
+    {
+      label: "WIN",
+      value: `${metrics.winRate.toFixed(0)}%`,
+      color: isEmpty ? "#94a3b8" : (metrics.winRate >= 50 ? "#00c16a" : "#fbbf24"),
+    },
+  ];
 
   return (
     <Paper sx={{
-      p: 2,
-      borderRadius: "14px",
-      backgroundColor: "rgba(8, 12, 20, 0.4)",
-      border: "1px solid rgba(255, 255, 255, 0.04)",
-      mb: 3,
+      p: 1.5,
+      borderRadius: "12px",
+      background: "linear-gradient(180deg, rgba(13, 19, 33, 0.55) 0%, rgba(8, 12, 20, 0.4) 100%)",
+      border: "1px solid rgba(255, 255, 255, 0.05)",
+      mb: 2,
       position: "relative",
       overflow: "hidden"
     }}>
-      <Typography sx={{ fontSize: "0.78rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.08em", mb: 1.5 }}>
-        กราฟการเติบโตของกำไรสะสม (Equity Curve)
-      </Typography>
+      {/* Header + KPI inline (กระชับในแถวเดียว) */}
+      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1, mb: 1 }}>
+        <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, minWidth: 0 }}>
+          <Box sx={{ width: 22, height: 22, borderRadius: "7px", display: "grid", placeItems: "center", color: strokeColor, backgroundColor: `${strokeColor}1a`, border: `1px solid ${strokeColor}33`, flexShrink: 0 }}>
+            <TrendingUp size={13} />
+          </Box>
+          <Typography sx={{ fontSize: "0.8rem", fontWeight: 700, color: "text.primary", fontFamily: "Outfit, sans-serif", whiteSpace: "nowrap" }}>
+            กำไรสะสม <Box component="span" sx={{ color: "text.secondary", fontWeight: 600, fontSize: "0.66rem", textTransform: "uppercase", letterSpacing: "0.06em" }}>Equity Curve</Box>
+          </Typography>
+        </Box>
 
-      <Box sx={{ width: "100%", height: 160, overflow: "visible", opacity: isEmpty ? 0.3 : 1 }}>
-        <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" style={{ overflow: "visible" }}>
+        <Box sx={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: { xs: 0.75, sm: 1.25 } }}>
+          {kpis.map((k) => (
+            <Box key={k.label} sx={{ display: "flex", alignItems: "baseline", gap: 0.45 }}>
+              <Typography sx={{ color: "text.secondary", fontSize: "0.58rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                {k.label}
+              </Typography>
+              <Typography sx={{ color: k.color, fontSize: "0.82rem", fontWeight: 800, fontFamily: "Outfit, monospace", lineHeight: 1 }}>
+                {k.value}
+              </Typography>
+            </Box>
+          ))}
+        </Box>
+      </Box>
+
+      <Box sx={{ width: "100%", aspectRatio: `${width} / ${height}`, overflow: "visible", opacity: isEmpty ? 0.35 : 1 }}>
+        <svg viewBox={`0 0 ${width} ${height}`} width="100%" height="100%" style={{ overflow: "visible", display: "block" }}>
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor={strokeColor} stopOpacity={isEmpty ? 0.05 : 0.25} />
-              <stop offset="100%" stopColor={strokeColor} stopOpacity="0.0" />
+              <stop offset="0%" stopColor={strokeColor} stopOpacity={isEmpty ? 0.05 : 0.22} />
+              <stop offset="100%" stopColor={strokeColor} stopOpacity="0" />
             </linearGradient>
           </defs>
 
-          <line x1={paddingX} y1={paddingY} x2={width - paddingX} y2={paddingY} stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
-          <line x1={paddingX} y1={paddingY + chartHeight / 2} x2={width - paddingX} y2={paddingY + chartHeight / 2} stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
-          <line x1={paddingX} y1={paddingY + chartHeight} x2={width - paddingX} y2={paddingY + chartHeight} stroke="rgba(255,255,255,0.03)" strokeWidth="1" />
+          {/* Zero baseline (จาง) */}
+          <line x1={padLeft} y1={zeroY} x2={width - padRight} y2={zeroY} stroke="rgba(255,255,255,0.10)" strokeDasharray="4 5" strokeWidth="1" />
 
-          {hasZeroLine && (
-            <line
-              x1={paddingX}
-              y1={zeroY}
-              x2={width - paddingX}
-              y2={zeroY}
-              stroke="rgba(255,255,255,0.12)"
-              strokeDasharray="4 4"
-              strokeWidth="1.2"
-            />
-          )}
-
-          {!isEmpty && barPoints.map((t, idx) => {
-            const pnlVal = t.pnl || 0;
-            const barHeight = (Math.abs(pnlVal) / maxSinglePnl) * (chartHeight * 0.35);
-            const midpointTrade = (t.startTrade + t.endTrade) / 2;
-            const x = paddingX + (midpointTrade / tradeCountForScale) * chartWidth;
-            const barWidth = Math.max(2, Math.min(16, (chartWidth / barPoints.length) * 0.55));
-            const barX = x - barWidth / 2;
-            const isProfit = pnlVal > 0;
-            const barY = isProfit ? zeroY - barHeight : zeroY;
-            const barColor = isProfit ? "#00c16a" : "#ef5b63";
-
+          {/* แท่ง PnL ต่อเทรด (เลเยอร์หลัง โทนจาง) */}
+          {!isEmpty && bars.map((b, i) => {
+            const isUp = b.pnl >= 0;
+            const avail = isUp ? (zeroY - padTop) : (chartBottom - zeroY);
+            const bh = Math.min((Math.abs(b.pnl) / maxAbsBar) * (chartHeight * 0.42), Math.max(0, avail));
+            const bw = Math.max(2, Math.min(13, (chartWidth / bars.length) * 0.6));
+            const bx = xScale(b.timestamp) - bw / 2;
+            const by = isUp ? zeroY - bh : zeroY;
             return (
               <rect
-                key={idx}
-                x={barX}
-                y={barY}
-                width={barWidth}
-                height={Math.max(1, barHeight)}
-                fill={barColor}
-                opacity="0.14"
-                rx="1.5"
+                key={`bar-${i}`}
+                x={bx}
+                y={by}
+                width={bw}
+                height={Math.max(1, bh)}
+                fill={isUp ? "#00c16a" : "#ef5b63"}
+                opacity={0.2}
+                rx="1"
               />
             );
           })}
 
+          {/* Area + line */}
           {areaPath && <path d={areaPath} fill={`url(#${gradientId})`} />}
-
           {linePath && (
             <path
               d={linePath}
               fill="none"
               stroke={strokeColor}
-              strokeWidth="2.5"
+              strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
             />
           )}
 
+          {/* Hover crosshair */}
+          {!isEmpty && hoveredIndex !== null && points[hoveredIndex] && (
+            <line
+              x1={points[hoveredIndex].x}
+              y1={padTop}
+              x2={points[hoveredIndex].x}
+              y2={chartBottom}
+              stroke="rgba(255,255,255,0.18)"
+              strokeWidth="1"
+              strokeDasharray="3 3"
+            />
+          )}
+
+          {/* Last-value dot */}
+          {!isEmpty && lastPoint && (
+            <circle cx={lastPoint.x} cy={lastPoint.y} r="3" fill={strokeColor} />
+          )}
+
+          {/* Hover hit-areas + dot */}
           {!isEmpty && points.map((p, i) => {
             const isHovered = hoveredIndex === i;
-            const showDot = points.length <= 90 || isHovered || i === 0 || i === points.length - 1;
             return (
               <g key={`${p.tradeNumber}-${i}`}>
                 <circle
                   cx={p.x}
                   cy={p.y}
-                  r={points.length > 90 ? 8 : 7}
+                  r={points.length > 90 ? 9 : 7}
                   fill="transparent"
                   style={{ cursor: "pointer" }}
                   onMouseEnter={() => setHoveredIndex(i)}
                   onMouseLeave={() => setHoveredIndex(null)}
                 />
-                {showDot && (
+                {isHovered && (
                   <circle
                     cx={p.x}
                     cy={p.y}
-                    r={isHovered ? 6 : 3.6}
-                    fill={isHovered ? strokeColor : "#0d1321"}
-                    stroke={strokeColor}
+                    r={5}
+                    fill={strokeColor}
+                    stroke="#0d1321"
                     strokeWidth="2"
                     style={{ pointerEvents: "none" }}
                   />
@@ -335,10 +432,7 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
       {isEmpty && (
         <Box sx={{
           position: "absolute",
-          top: "40px",
-          left: 0,
-          right: 0,
-          bottom: 0,
+          inset: 0,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -353,34 +447,35 @@ function PnLChart({ history }: { history: HistoryItem[] }) {
       {!isEmpty && hoveredIndex !== null && points[hoveredIndex] && (
         <Paper sx={{
           position: "absolute",
-          top: "45px",
+          bottom: "16px",
           left: points[hoveredIndex].x > width / 2 ? "16px" : "auto",
           right: points[hoveredIndex].x <= width / 2 ? "16px" : "auto",
           p: 1.5,
           borderRadius: "11px",
-          backgroundColor: "rgba(9, 15, 30, 0.9)",
+          backgroundColor: "rgba(9, 15, 30, 0.92)",
+          backdropFilter: "blur(6px)",
           border: `1px solid ${points[hoveredIndex].pnl >= 0 ? "rgba(0, 193, 106, 0.3)" : "rgba(239, 91, 99, 0.3)"}`,
-          boxShadow: "0 4px 20px rgba(0, 0, 0, 0.45)",
+          boxShadow: "0 6px 24px rgba(0, 0, 0, 0.5)",
           zIndex: 10,
           pointerEvents: "none"
         }}>
           <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", fontWeight: 500 }}>
             {points[hoveredIndex].tradeNumber === 0 ? "จุดเริ่มต้น" : `ไม้ที่ ${points[hoveredIndex].tradeNumber}: ${points[hoveredIndex].label}`}
           </Typography>
+          {points[hoveredIndex].time && (
+            <Typography sx={{ fontSize: "0.7rem", color: "text.secondary", fontFamily: "monospace", mt: 0.2 }}>
+              วันที่: {points[hoveredIndex].time}
+            </Typography>
+          )}
           <Typography sx={{
             fontSize: "0.88rem",
-            fontWeight: 600,
+            fontWeight: 700,
             color: points[hoveredIndex].pnl >= 0 ? "primary.main" : "error.main",
             fontFamily: "monospace",
             mt: 0.2
           }}>
             กำไรสะสม: {points[hoveredIndex].pnl >= 0 ? "+" : ""}{points[hoveredIndex].pnl.toLocaleString(undefined, { minimumFractionDigits: 2 })} THB
           </Typography>
-          {points[hoveredIndex].time && (
-            <Typography sx={{ fontSize: "0.68rem", color: "text.secondary", mt: 0.5 }}>
-              {points[hoveredIndex].time}
-            </Typography>
-          )}
         </Paper>
       )}
     </Paper>
@@ -682,6 +777,48 @@ export function BotTradeView({ botConfig, positions, history, aiWatchlist, handl
                 </Typography>
               </Box>
               <Brain size={18} style={{ color: "#60a5fa" }} />
+            </Box>
+
+            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "1fr 1fr" }, gap: 1, mb: 2 }}>
+              {[
+                { title: "ผล AI (Decision)", items: aiDecisionNotes },
+                { title: "สถานะรายการ (Status)", items: aiStatusNotes },
+              ].map((group) => (
+                <Paper
+                  key={group.title}
+                  sx={{
+                    p: 1.2,
+                    borderRadius: "10px",
+                    backgroundColor: "rgba(2, 6, 23, 0.28)",
+                    border: "1px solid rgba(255,255,255,0.045)",
+                  }}
+                >
+                  <Typography sx={{ color: "text.secondary", fontSize: "0.68rem", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", mb: 0.75 }}>
+                    {group.title}
+                  </Typography>
+                  <Stack spacing={0.65}>
+                    {group.items.map((item) => (
+                      <Box key={item.label} sx={{ display: "grid", gridTemplateColumns: "72px minmax(0, 1fr)", gap: 1, alignItems: "baseline" }}>
+                        <Chip
+                          size="small"
+                          label={item.label}
+                          sx={{
+                            height: 18,
+                            fontSize: "9px",
+                            fontWeight: 800,
+                            color: item.color,
+                            backgroundColor: `${item.color}12`,
+                            border: `1px solid ${item.color}33`,
+                          }}
+                        />
+                        <Typography sx={{ color: "text.secondary", fontSize: "0.72rem", lineHeight: 1.35 }}>
+                          {item.description}
+                        </Typography>
+                      </Box>
+                    ))}
+                  </Stack>
+                </Paper>
+              ))}
             </Box>
 
             {!botConfig.ai_enabled ? (

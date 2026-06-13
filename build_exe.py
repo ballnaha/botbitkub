@@ -40,6 +40,14 @@ def build_exe():
         print("Installing pyinstaller...")
         subprocess.run([sys.executable, "-m", "pip", "install", "pyinstaller"], check=True)
         
+    previous_dist_dir = os.path.join(os.getcwd(), "dist", "BitkubMiniBot")
+    preserved_files = {}
+    for filename in [".env", "bot_config.json"]:
+        source_path = os.path.join(previous_dist_dir, filename)
+        if os.path.exists(source_path):
+            with open(source_path, "rb") as f:
+                preserved_files[filename] = f.read()
+
     # Clean previous build directories
     for folder in ["build", "dist"]:
         if os.path.exists(folder):
@@ -71,12 +79,21 @@ def build_exe():
     
     # Copy .env config file and other templates to dist folder if they exist
     dist_dir = os.path.join(os.getcwd(), "dist", "BitkubMiniBot")
-    if os.path.exists(".env"):
+    if ".env" in preserved_files:
+        print("Restoring existing .env file in release folder...")
+        with open(os.path.join(dist_dir, ".env"), "wb") as f:
+            f.write(preserved_files[".env"])
+    elif os.path.exists(".env"):
         print("Copying .env file to release folder...")
         shutil.copy(".env", os.path.join(dist_dir, ".env"))
     elif os.path.exists(".env.example"):
         print("Copying .env.example as .env to release folder...")
         shutil.copy(".env.example", os.path.join(dist_dir, ".env"))
+
+    if "bot_config.json" in preserved_files:
+        print("Restoring existing bot_config.json file in release folder...")
+        with open(os.path.join(dist_dir, "bot_config.json"), "wb") as f:
+            f.write(preserved_files["bot_config.json"])
 
     if os.path.exists(".env.example"):
         shutil.copy(".env.example", os.path.join(dist_dir, ".env.example"))

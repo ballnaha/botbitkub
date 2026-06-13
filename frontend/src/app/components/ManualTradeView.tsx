@@ -1042,15 +1042,23 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                       </TableCell>
                     </TableRow>
                   ) : (
-                    displayedOpenOrders.map((o) => {
+                    displayedOpenOrders.map((o, index) => {
                       const isBuy = o.side === "buy";
                       const rateVal = parseFloat(o.rat || o.rate || 0);
                       const amtVal = parseFloat(o.amt || o.amount || 0);
                       const cryptoQty = isBuy ? (rateVal > 0 ? amtVal / rateVal : 0) : amtVal;
                       const baseCoin = o.symbol ? o.symbol.split("/")[0] : "COIN";
+                      const rowKey = [
+                        o.source || "manual",
+                        o.symbol || "symbol",
+                        o.side || "side",
+                        o.id || o.order_id || "order",
+                        o.ts || o.created_at || index,
+                        index,
+                      ].join("-");
 
                       return (
-                        <TableRow key={o.id} sx={{ "&:hover": { backgroundColor: "rgba(255,255,255,0.02)" } }}>
+                        <TableRow key={rowKey} sx={{ "&:hover": { backgroundColor: "rgba(255,255,255,0.02)" } }}>
                           <TableCell sx={{ color: isBuy ? "#00c16a" : "#ef5b63", fontWeight: 600 }}>
                             {o.side?.toUpperCase()}
                           </TableCell>
@@ -1179,9 +1187,17 @@ export function ManualTradeView({ actionLoading, balances, calculatePercentage, 
                       const amtVal = parseFloat(h.amount || h.amt || 0);
                       const cryptoQty = isBuy ? (rateVal > 0 ? amtVal / rateVal : 0) : amtVal;
                       const baseCoin = h.symbol ? h.symbol.split("/")[0] : "COIN";
+                      const rowKey = [
+                        h.source || "manual",
+                        h.symbol || "symbol",
+                        h.side || "side",
+                        h.order_id || h.txn_id || h.id || "history",
+                        h.ts || h.order_closed_at || index,
+                        index,
+                      ].join("-");
 
                       return (
-                        <TableRow key={h.order_id || index} sx={{ "&:hover": { backgroundColor: "rgba(255,255,255,0.02)" } }}>
+                        <TableRow key={rowKey} sx={{ "&:hover": { backgroundColor: "rgba(255,255,255,0.02)" } }}>
                           <TableCell sx={{ color: isBuy ? "#00c16a" : "#ef5b63", fontWeight: 600 }}>
                             {h.side?.toUpperCase()}
                           </TableCell>

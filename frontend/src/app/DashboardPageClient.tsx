@@ -56,6 +56,7 @@ import {
 import { Footer } from "./components/Footer";
 import { useToast } from "./components/Toast";
 import { useBitkubWebSocket } from "./hooks/useBitkubWebSocket";
+import type { BotConfig } from "./components/dashboardTypes";
 
 const BotTradeView = dynamic(() => import("./components/BotTradeView").then((mod) => mod.BotTradeView));
 const LogsView = dynamic(() => import("./components/LogsView").then((mod) => mod.LogsView));
@@ -214,7 +215,7 @@ export default function DashboardPageClient() {
   const [username, setUsername] = useState("Loading...");
   const [connectionStatus, setConnectionStatus] = useState<"connected" | "disconnected">("disconnected");
   const [connectionMsg, setConnectionMsg] = useState("");
-  const [botConfig, setBotConfig] = useState({
+  const [botConfig, setBotConfig] = useState<BotConfig>({
     is_running: false,
     dry_run: true,
     stake_amount_thb: 100,
@@ -233,6 +234,15 @@ export default function DashboardPageClient() {
     ai_min_score: 65,
     ai_min_confidence: 0.55,
     ai_timeout_seconds: 8,
+    trailing_stop_enabled: true,
+    trailing_activation_pct: 3,
+    trailing_stop_pct: 2,
+    cooldown_enabled: true,
+    cooldown_minutes: 30,
+    cooldown_after_loss_only: true,
+    regime_filter_enabled: true,
+    regime_action: "block",
+    regime_reduce_factor: 0.5,
   });
   const [balances, setBalances] = useState<BalanceItem[]>([]);
   const [tickers, setTickers] = useState<Record<string, TickerData>>({});
@@ -259,6 +269,7 @@ export default function DashboardPageClient() {
       ...(activeView === "bot" ? positions.map((pos) => pos.symbol).filter(Boolean) : []),
     ]));
   }, [activeView, positions, tradeSymbol]);
+  const realtimeRequired = activeView === "manual" || (activeView === "bot" && selectedStreamSymbols.length > 0);
 
   // WebSocket for real-time ticker prices
   const handleTickerUpdate = useCallback((newTickers: Record<string, TickerData>) => {
@@ -499,6 +510,15 @@ export default function DashboardPageClient() {
           ai_min_score: data.ai_min_score ?? 65,
           ai_min_confidence: data.ai_min_confidence ?? 0.55,
           ai_timeout_seconds: data.ai_timeout_seconds ?? 8,
+          trailing_stop_enabled: data.trailing_stop_enabled ?? true,
+          trailing_activation_pct: data.trailing_activation_pct ?? 3,
+          trailing_stop_pct: data.trailing_stop_pct ?? 2,
+          cooldown_enabled: data.cooldown_enabled ?? true,
+          cooldown_minutes: data.cooldown_minutes ?? 30,
+          cooldown_after_loss_only: data.cooldown_after_loss_only ?? true,
+          regime_filter_enabled: data.regime_filter_enabled ?? true,
+          regime_action: data.regime_action || "block",
+          regime_reduce_factor: data.regime_reduce_factor ?? 0.5,
         };
       });
     } catch (err) {
@@ -774,6 +794,15 @@ export default function DashboardPageClient() {
           ai_min_score: Number(configToSave.ai_min_score),
           ai_min_confidence: Number(configToSave.ai_min_confidence),
           ai_timeout_seconds: Number(configToSave.ai_timeout_seconds),
+          trailing_stop_enabled: configToSave.trailing_stop_enabled ?? true,
+          trailing_activation_pct: Number(configToSave.trailing_activation_pct ?? 3),
+          trailing_stop_pct: Number(configToSave.trailing_stop_pct ?? 2),
+          cooldown_enabled: configToSave.cooldown_enabled ?? true,
+          cooldown_minutes: Number(configToSave.cooldown_minutes ?? 30),
+          cooldown_after_loss_only: configToSave.cooldown_after_loss_only ?? true,
+          regime_filter_enabled: configToSave.regime_filter_enabled ?? true,
+          regime_action: configToSave.regime_action || "block",
+          regime_reduce_factor: Number(configToSave.regime_reduce_factor ?? 0.5),
         }),
       });
       if (handleApiError(res)) return;
@@ -797,6 +826,15 @@ export default function DashboardPageClient() {
           Number(configToSave.ai_min_score) === Number(latestConfig.ai_min_score) &&
           Number(configToSave.ai_min_confidence) === Number(latestConfig.ai_min_confidence) &&
           Number(configToSave.ai_timeout_seconds) === Number(latestConfig.ai_timeout_seconds) &&
+          (configToSave.trailing_stop_enabled ?? true) === (latestConfig.trailing_stop_enabled ?? true) &&
+          Number(configToSave.trailing_activation_pct ?? 3) === Number(latestConfig.trailing_activation_pct ?? 3) &&
+          Number(configToSave.trailing_stop_pct ?? 2) === Number(latestConfig.trailing_stop_pct ?? 2) &&
+          (configToSave.cooldown_enabled ?? true) === (latestConfig.cooldown_enabled ?? true) &&
+          Number(configToSave.cooldown_minutes ?? 30) === Number(latestConfig.cooldown_minutes ?? 30) &&
+          (configToSave.cooldown_after_loss_only ?? true) === (latestConfig.cooldown_after_loss_only ?? true) &&
+          (configToSave.regime_filter_enabled ?? true) === (latestConfig.regime_filter_enabled ?? true) &&
+          (configToSave.regime_action || "block") === (latestConfig.regime_action || "block") &&
+          Number(configToSave.regime_reduce_factor ?? 0.5) === Number(latestConfig.regime_reduce_factor ?? 0.5) &&
           JSON.stringify(configToSave.symbols || []) === JSON.stringify(latestConfig.symbols || []);
 
         if (savedStillMatchesLatest) {
@@ -824,6 +862,15 @@ export default function DashboardPageClient() {
             ai_min_score: data.config.ai_min_score ?? prev.ai_min_score,
             ai_min_confidence: data.config.ai_min_confidence ?? prev.ai_min_confidence,
             ai_timeout_seconds: data.config.ai_timeout_seconds ?? prev.ai_timeout_seconds,
+            trailing_stop_enabled: data.config.trailing_stop_enabled ?? prev.trailing_stop_enabled,
+            trailing_activation_pct: data.config.trailing_activation_pct ?? prev.trailing_activation_pct,
+            trailing_stop_pct: data.config.trailing_stop_pct ?? prev.trailing_stop_pct,
+            cooldown_enabled: data.config.cooldown_enabled ?? prev.cooldown_enabled,
+            cooldown_minutes: data.config.cooldown_minutes ?? prev.cooldown_minutes,
+            cooldown_after_loss_only: data.config.cooldown_after_loss_only ?? prev.cooldown_after_loss_only,
+            regime_filter_enabled: data.config.regime_filter_enabled ?? prev.regime_filter_enabled,
+            regime_action: data.config.regime_action || prev.regime_action,
+            regime_reduce_factor: data.config.regime_reduce_factor ?? prev.regime_reduce_factor,
           }));
         }
 
@@ -902,6 +949,15 @@ export default function DashboardPageClient() {
     botConfig.ai_min_score,
     botConfig.ai_min_confidence,
     botConfig.ai_timeout_seconds,
+    botConfig.trailing_stop_enabled,
+    botConfig.trailing_activation_pct,
+    botConfig.trailing_stop_pct,
+    botConfig.cooldown_enabled,
+    botConfig.cooldown_minutes,
+    botConfig.cooldown_after_loss_only,
+    botConfig.regime_filter_enabled,
+    botConfig.regime_action,
+    botConfig.regime_reduce_factor,
     initialLoading,
   ]);
 
@@ -1732,6 +1788,7 @@ export default function DashboardPageClient() {
           wsConnected={wsConnected}
           backendConnected={connectionStatus === "connected"}
           activeView={activeView}
+          wsRequired={realtimeRequired}
           setActiveView={setActiveView}
         />
 

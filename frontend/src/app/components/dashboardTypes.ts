@@ -83,6 +83,16 @@ export type BotConfig = {
   ai_min_score: number;
   ai_min_confidence: number;
   ai_timeout_seconds: number;
+  // Auto risk modules
+  trailing_stop_enabled?: boolean;
+  trailing_activation_pct?: number;
+  trailing_stop_pct?: number;
+  cooldown_enabled?: boolean;
+  cooldown_minutes?: number;
+  cooldown_after_loss_only?: boolean;
+  regime_filter_enabled?: boolean;
+  regime_action?: string;
+  regime_reduce_factor?: number;
 };
 
 export interface StrategyInfo {
@@ -91,6 +101,9 @@ export interface StrategyInfo {
   description: string;
   indicators: string[];
   risk_level: string;
+  market_condition?: string;
+  ai_min_score?: number;
+  ai_min_confidence?: number;
   buy_logic: string;
   sell_logic: string;
 }

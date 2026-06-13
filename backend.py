@@ -13,12 +13,13 @@ from dotenv import load_dotenv
 from bot_runner import BotRunner
 from strategies import get_strategy_list
 import secrets
+from app_paths import get_bundled_path, get_data_path
 
 # Global bot instance
 bot = None
 
 # Load environment variables
-load_dotenv()
+load_dotenv(dotenv_path=get_data_path(".env"))
 
 # Setup Custom Session Authentication for VPS Security
 def get_current_user(request: Request):
@@ -209,7 +210,7 @@ async def get_status():
     if are_credentials_placeholder(api_key, api_secret):
         return {
             "status": "disconnected",
-            "message": "API Keys are set to placeholders. Please edit the .env file in the workspace directory with your actual API credentials."
+            "message": f"API Keys are set to placeholders. Please edit the .env file at {get_data_path('.env')} with your actual API credentials."
         }
 
     try:
@@ -256,7 +257,7 @@ async def get_balance():
         bot_locked = {}
         try:
             import sqlite3
-            conn = sqlite3.connect(bot.db_path if bot else "bot_data.db")
+            conn = sqlite3.connect(bot.db_path if bot else str(get_data_path("bot_data.db")))
             cursor = conn.cursor()
             cursor.execute("SELECT symbol, amount FROM positions WHERE mode = 'LIVE'")
             for row in cursor.fetchall():
@@ -362,6 +363,11 @@ async def place_trade(trade: TradeRequest):
         else:
             path = "/api/v3/market/place-ask"
 
+        if bot:
+            can_order, reason = bot.can_place_live_order(standard_symbol, side)
+            if not can_order:
+                raise HTTPException(status_code=400, detail=reason)
+
         # Format amount and rate using bot helper if bot is initialized
         if bot:
             scales = bot.get_symbol_scales(standard_symbol)
@@ -432,7 +438,7 @@ async def get_open_orders(symbol: str = None):
         bot_order_ids = set()
         try:
             import sqlite3
-            conn = sqlite3.connect(bot.db_path if bot else "bot_data.db")
+            conn = sqlite3.connect(bot.db_path if bot else str(get_data_path("bot_data.db")))
             cursor = conn.cursor()
             cursor.execute("SELECT order_id FROM positions WHERE order_id IS NOT NULL AND order_id != ''")
             for row in cursor.fetchall():
@@ -533,7 +539,7 @@ async def get_order_history(symbol: str = None):
         bot_order_ids = set()
         try:
             import sqlite3
-            conn = sqlite3.connect(bot.db_path if bot else "bot_data.db")
+            conn = sqlite3.connect(bot.db_path if bot else str(get_data_path("bot_data.db")))
             cursor = conn.cursor()
             
             # Fetch from active positions (pending sells)
@@ -623,6 +629,16 @@ class BotToggleRequest(BaseModel):
     ai_min_score: int = None
     ai_min_confidence: float = None
     ai_timeout_seconds: float = None
+    # Auto risk modules
+    trailing_stop_enabled: bool = None
+    trailing_activation_pct: float = None
+    trailing_stop_pct: float = None
+    cooldown_enabled: bool = None
+    cooldown_minutes: int = None
+    cooldown_after_loss_only: bool = None
+    regime_filter_enabled: bool = None
+    regime_action: str = None
+    regime_reduce_factor: float = None
 
 class PanicSellRequest(BaseModel):
     symbol: str
@@ -654,7 +670,57 @@ async def get_bot_status():
         "ai_min_score": bot.config.get("ai_min_score", 65),
         "ai_min_confidence": bot.config.get("ai_min_confidence", 0.55),
         "ai_timeout_seconds": bot.config.get("ai_timeout_seconds", 8),
+        "trailing_stop_enabled": bot.config.get("trailing_stop_enabled", True),
+        "trailing_activation_pct": bot.config.get("trailing_activation_pct", 3.0),
+        "trailing_stop_pct": bot.config.get("trailing_stop_pct", 2.0),
+        "cooldown_enabled": bot.config.get("cooldown_enabled", True),
+        "cooldown_minutes": bot.config.get("cooldown_minutes", 30),
+        "cooldown_after_loss_only": bot.config.get("cooldown_after_loss_only", True),
+        "regime_filter_enabled": bot.config.get("regime_filter_enabled", True),
+        "regime_action": bot.config.get("regime_action", "block"),
+        "regime_reduce_factor": bot.config.get("regime_reduce_factor", 0.5),
     }
+
+@app.get("/api/bot/regime-status")
+async def get_bot_regime_status():
+    if not bot:
+        raise HTTPException(status_code=500, detail="Bot not initialized.")
+
+    try:
+        regime, price, ema = await asyncio.to_thread(bot.get_market_regime)
+        gap_pct = ((price - ema) / ema) * 100 if ema else 0.0
+        period = int(bot.config.get("regime_ema_period", 200))
+        timeframe = str(bot.config.get("regime_timeframe", "240"))
+        enabled = bool(bot.config.get("regime_filter_enabled", True))
+        action = str(bot.config.get("regime_action", "block")).lower()
+        recommended_enabled = regime == "bear"
+
+        if regime == "bear":
+            recommendation = "เปิดไว้" if action == "block" else "เปิดไว้และลด Stake"
+            reason = "BTC อยู่ต่ำกว่า EMA ระยะยาว บอทควรชะลอการเปิดไม้ใหม่"
+        else:
+            recommendation = "เปิดไว้เป็นเกราะสำรอง"
+            reason = "BTC อยู่เหนือ EMA ระยะยาว ยังไม่ใช่ตลาดหมีตามเงื่อนไขนี้"
+
+        cached = getattr(bot, "_regime_cache", None) or {}
+        return {
+            "status": "success",
+            "enabled": enabled,
+            "reference_symbol": bot.config.get("regime_reference_symbol", "BTC/THB"),
+            "timeframe": timeframe,
+            "ema_period": period,
+            "regime": regime,
+            "price": price,
+            "ema": ema,
+            "gap_pct": gap_pct,
+            "action": action,
+            "recommended_enabled": recommended_enabled,
+            "recommendation": recommendation,
+            "reason": reason,
+            "updated_at": cached.get("ts", time.time()),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to evaluate market regime: {str(e)}")
 
 @app.post("/api/bot/config")
 async def save_bot_config(config_req: BotToggleRequest):
@@ -688,16 +754,38 @@ async def save_bot_config(config_req: BotToggleRequest):
         bot.config["ai_provider"] = config_req.ai_provider.strip().lower() or "gemini"
     if config_req.ai_model is not None:
         bot.config["ai_model"] = config_req.ai_model.strip() or "gemini-3.5-flash"
+    if bot.config.get("ai_provider") == "deepseek":
+        if bot.config.get("ai_model") not in {"deepseek-reasoner", "deepseek-v4-pro"}:
+            bot.config["ai_model"] = "deepseek-reasoner"
     if config_req.ai_min_score is not None:
         bot.config["ai_min_score"] = max(0, min(100, config_req.ai_min_score))
     if config_req.ai_min_confidence is not None:
         bot.config["ai_min_confidence"] = max(0.0, min(1.0, config_req.ai_min_confidence))
     if config_req.ai_timeout_seconds is not None:
         bot.config["ai_timeout_seconds"] = max(2.0, min(30.0, config_req.ai_timeout_seconds))
+    # Auto risk modules
+    if config_req.trailing_stop_enabled is not None:
+        bot.config["trailing_stop_enabled"] = config_req.trailing_stop_enabled
+    if config_req.trailing_activation_pct is not None:
+        bot.config["trailing_activation_pct"] = max(0.0, config_req.trailing_activation_pct)
+    if config_req.trailing_stop_pct is not None:
+        bot.config["trailing_stop_pct"] = max(0.1, config_req.trailing_stop_pct)
+    if config_req.cooldown_enabled is not None:
+        bot.config["cooldown_enabled"] = config_req.cooldown_enabled
+    if config_req.cooldown_minutes is not None:
+        bot.config["cooldown_minutes"] = max(0, config_req.cooldown_minutes)
+    if config_req.cooldown_after_loss_only is not None:
+        bot.config["cooldown_after_loss_only"] = config_req.cooldown_after_loss_only
+    if config_req.regime_filter_enabled is not None:
+        bot.config["regime_filter_enabled"] = config_req.regime_filter_enabled
+    if config_req.regime_action is not None:
+        bot.config["regime_action"] = "reduce" if config_req.regime_action == "reduce" else "block"
+    if config_req.regime_reduce_factor is not None:
+        bot.config["regime_reduce_factor"] = max(0.1, min(1.0, config_req.regime_reduce_factor))
     bot.config["trade_direction"] = "long"
     bot.config["leverage"] = 1
         
-    bot.save_json("bot_config.json", bot.config)
+    bot.save_json(str(get_data_path("bot_config.json")), bot.config)
     
     if mode_changed:
         bot.add_log(f"Trading mode changed to: {'Dry-Run' if bot.config['dry_run'] else 'LIVE'}. Reloading active positions.")
@@ -726,8 +814,8 @@ async def toggle_bot():
 async def get_bot_positions():
     if not bot:
         return []
-    bot.reconcile_live_positions_with_wallet()
-    bot.update_active_positions_pnl()
+    # อ่านจาก memory ตรงๆ — ราคา/PnL ถูกรีเฟรชโดย price_loop (เธรดแยก) อยู่แล้ว
+    # ไม่มีการยิง Bitkub หรือเขียน DB ใน request path จึงตอบทันที web ไม่กระตุก
     return list(bot.positions.values())
 
 @app.get("/api/bot/history")
@@ -976,7 +1064,7 @@ async def bot_panic_sell(req: PanicSellRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to fetch current price: {str(e)}")
 
-    success = bot.execute_sell(symbol, last_price, reason="Emergency Panic Sell via UI")
+    success = await asyncio.to_thread(bot.execute_sell, symbol, last_price, "Emergency Panic Sell via UI")
     if success:
         return {"status": "success", "message": f"Successfully sold {symbol}."}
     else:
@@ -996,7 +1084,7 @@ class CredentialsUpdateRequest(BaseModel):
     deepseek_api_key: str = None
 
 def update_env_file(updates: dict):
-    env_path = ".env"
+    env_path = get_data_path(".env")
     lines = []
     if os.path.exists(env_path):
         with open(env_path, "r", encoding="utf-8") as f:
@@ -1076,7 +1164,7 @@ async def update_credentials(req: CredentialsUpdateRequest):
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 
-FRONTEND_DIR = os.path.join(os.path.dirname(__file__), "frontend", "out")
+FRONTEND_DIR = str(get_bundled_path("frontend", "out"))
 
 if os.path.exists(FRONTEND_DIR):
     print(f"Frontend static files found at {FRONTEND_DIR}. Serving static files.")

@@ -8,6 +8,7 @@ interface FooterProps {
   wsConnected?: boolean;
   backendConnected?: boolean;
   activeView?: string;
+  wsRequired?: boolean;
   setActiveView?: (view: any) => void;
 }
 
@@ -15,20 +16,22 @@ export function Footer({
   wsConnected = false,
   backendConnected = false,
   activeView,
+  wsRequired,
 }: FooterProps) {
   // Determine consolidated system status
-  const wsRequired = activeView === "bot" || activeView === "manual";
-  const isOnline = backendConnected && (!wsRequired || wsConnected);
-  const isLimited = backendConnected && wsRequired && !wsConnected;
+  const needsRealtime = wsRequired ?? (activeView === "bot" || activeView === "manual");
+  const isOnline = backendConnected && (!needsRealtime || wsConnected);
+  const isLimited = backendConnected && needsRealtime && !wsConnected;
+  const isTradingView = activeView === "bot" || activeView === "manual";
 
   let statusColor = "#ef5b63"; // Offline
   let statusText = "Offline";
   if (isOnline) {
     statusColor = "#00c16a"; // Online
-    statusText = wsRequired ? "System Active" : "Backend Ready";
+    statusText = isTradingView ? "System Active" : "Backend Ready";
   } else if (isLimited) {
     statusColor = "#f59e0b"; // Connecting/Limited state
-    statusText = "Connecting...";
+    statusText = "Realtime Connecting...";
   }
 
   return (

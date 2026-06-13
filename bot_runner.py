@@ -14,9 +14,10 @@ import importlib
 import strategy
 from dotenv import load_dotenv
 from ai_analyzer import GeminiTradeAnalyzer
+from app_paths import get_data_path
 
 # Load env variables for API calls
-load_dotenv()
+load_dotenv(dotenv_path=get_data_path(".env"))
 
 bitkub_http = requests.Session()
 bitkub_http.trust_env = False
@@ -27,9 +28,9 @@ bitkub_http.headers.update({
 })
 
 # ข้อมูลการตั้งค่าบอทเริ่มต้น
-BOT_CONFIG_FILE = "bot_config.json"
-POSITIONS_FILE = "active_positions.json"
-HISTORY_FILE = "trade_history.json"
+BOT_CONFIG_FILE = str(get_data_path("bot_config.json"))
+POSITIONS_FILE = str(get_data_path("active_positions.json"))
+HISTORY_FILE = str(get_data_path("trade_history.json"))
 
 DEFAULT_CONFIG = {
     "is_running": False,
@@ -39,6 +40,24 @@ DEFAULT_CONFIG = {
     "take_profit_pct": 10.0,
     "max_open_trades": 3,
     "max_budget_thb": 5000.0,
+    # Trailing Stop — ล็อกกำไรเมื่อราคาวิ่งขึ้นแล้วย่อกลับ (กันกรณีกำไร 9% แล้วหลุดจนไปโดน SL)
+    "trailing_stop_enabled": True,
+    "trailing_activation_pct": 3.0,  # เริ่ม trail เมื่อกำไรถึง +3% ก่อน
+    "trailing_stop_pct": 2.0,        # ขายเมื่อราคาย่อจากจุดสูงสุด 2%
+    # Cooldown — พักการเข้าซื้อเหรียญเดิมหลังขายขาดทุน (กัน whipsaw ในตลาด sideways)
+    "cooldown_enabled": True,
+    "cooldown_minutes": 30,
+    "cooldown_after_loss_only": True,  # นับ cooldown เฉพาะตอนขายขาดทุนเท่านั้น
+    # Price loop — ดึงราคา real-time เพื่ออัปเดต PnL + เช็ค SL/Trailing/TP แบบไว (เธรดแยก ไม่กระทบ web)
+    "price_poll_seconds": 5,
+    # Market Regime Filter — เกราะตลาดหมี: เช็คเหรียญอ้างอิง (BTC) เทียบ EMA ระยะยาวบน TF ใหญ่
+    # ถ้าตลาดเป็นหมี จะงดเข้าซื้อ/ลด stake ให้ทุกกลยุทธ์ (ยกเว้นกลยุทธ์ที่ออกแบบมาเล่นขาลงโดยตรง)
+    "regime_filter_enabled": True,
+    "regime_reference_symbol": "BTC/THB",
+    "regime_timeframe": "240",         # 4 ชั่วโมง
+    "regime_ema_period": 200,
+    "regime_action": "block",          # "block" = งดซื้อ, "reduce" = ลด stake
+    "regime_reduce_factor": 0.5,
     "trade_direction": "long",
     "leverage": 1,
     "ai_enabled": False,
@@ -59,10 +78,12 @@ DEFAULT_CONFIG = {
 
 class BotRunner:
     def __init__(self):
-        self.db_path = "bot_data.db"
+        self.db_path = str(get_data_path("bot_data.db"))
         self.config = self.load_json(BOT_CONFIG_FILE, DEFAULT_CONFIG)
         self.config = {**DEFAULT_CONFIG, **self.config}
         self.positions = {}
+        self.cooldowns = {}
+        self._regime_cache = None
         self.ai_watchlist = {}
         self.ai_analyzer = GeminiTradeAnalyzer()
         self.last_trade_error = ""
@@ -71,17 +92,27 @@ class BotRunner:
         self.symbol_metadata = {}
         self.thread = None
         self.stop_event = threading.Event()
+        # Reentrant lock กันการ "ขายซ้ำ"/แก้ position ชนกันระหว่างเธรด scan loop กับ price loop
+        # หมายเหตุ: web ไม่แตะ lock นี้ จึงไม่ถูกบล็อก
+        self.trade_lock = threading.RLock()
+        self.price_thread = None
         
         # Initialize Database and Load Positions
         self.init_db()
         self.load_positions_from_db()
+        self.load_cooldowns_from_db()
         
         # เพิ่ม Log เริ่มต้น
         self.add_log("Bot system initialized with SQLite database.")
         
         # Fetch symbol metadata for decimal precision
         self.fetch_symbol_metadata()
-        
+
+        # เริ่มเธรดดึงราคา real-time (รันตลอดอายุโปรเซส, poll เฉพาะตอนมี position)
+        # อัปเดต PnL ให้ dashboard เห็นแบบ live โดยไม่ต้องให้ web ยิง Bitkub เอง
+        self.price_thread = threading.Thread(target=self.price_loop, daemon=True)
+        self.price_thread.start()
+
         # ถ้าเปิดไว้ในคอนฟิก ให้รันเมื่อเริ่มโปรแกรม
         if self.config.get("is_running", False):
             self.start()
@@ -101,7 +132,11 @@ class BotRunner:
                             "symbol": item.get("symbol", f"{base}_{quote}"),
                             "quantity_scale": max(int(item.get("quantity_scale", 8)), int(item.get("base_asset_scale", 8))),
                             "price_scale": int(item.get("price_scale", 2)),
-                            "min_quote_size": float(item.get("min_quote_size", 10.0))
+                            "min_quote_size": float(item.get("min_quote_size", 10.0)),
+                            "source": item.get("source", "exchange"),
+                            "status": item.get("status", "active"),
+                            "freeze_buy": bool(item.get("freeze_buy", False)),
+                            "freeze_sell": bool(item.get("freeze_sell", False)),
                         }
                     self.add_log(f"Successfully loaded metadata for {len(self.symbol_metadata)} symbols from Bitkub.")
                     return
@@ -111,13 +146,27 @@ class BotRunner:
 
     def get_symbol_scales(self, symbol):
         # Default scales
-        default = {"quantity_scale": 8, "price_scale": 2, "min_quote_size": 10.0}
+        default = {"quantity_scale": 8, "price_scale": 2, "min_quote_size": 10.0, "source": "exchange", "status": "active", "freeze_buy": False, "freeze_sell": False}
         
         if not self.symbol_metadata:
             self.fetch_symbol_metadata()
             
         std_symbol = symbol.upper()
         return self.symbol_metadata.get(std_symbol, default)
+
+    def can_place_live_order(self, symbol, side):
+        meta = self.get_symbol_scales(symbol)
+        source = str(meta.get("source", "exchange")).lower()
+        status = str(meta.get("status", "active")).lower()
+        freeze_key = "freeze_buy" if side == "buy" else "freeze_sell"
+
+        if source == "broker":
+            return False, "เหรียญนี้เป็น broker coin (source=broker) Bitkub API place-bid/place-ask ไม่รองรับ"
+        if status != "active":
+            return False, f"ตลาดของเหรียญนี้ไม่ active (status={status})"
+        if meta.get(freeze_key, False):
+            return False, f"ตลาดของเหรียญนี้ปิดคำสั่ง {side} ชั่วคราว"
+        return True, ""
 
     def get_active_strategy(self):
         strategy_name = self.config.get("strategy", "multi_indicator")
@@ -127,11 +176,25 @@ class BotRunner:
             self.add_log(f"Failed to load strategy '{strategy_name}': {e}. Using default.")
             return strategy
 
+    def _db_connect(self):
+        """เปิด connection แบบมี busy_timeout กันชน 'database is locked'
+        (WAL mode เปิดไว้ครั้งเดียวใน init_db ทำให้ web อ่าน DB ได้ลื่นแม้ background กำลังเขียน)"""
+        conn = sqlite3.connect(self.db_path, timeout=5.0)
+        conn.execute("PRAGMA busy_timeout=5000")
+        return conn
+
     def init_db(self):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._db_connect()
             cursor = conn.cursor()
-            
+
+            # เปิด WAL mode (persist กับไฟล์ DB): readers ไม่ถูก block โดย writer
+            try:
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout=5000")
+            except Exception as e:
+                self.add_log(f"Could not enable WAL mode: {str(e)}")
+
             # Create positions table with mode column
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS positions (
@@ -189,6 +252,26 @@ class BotRunner:
             if "order_id" not in cols:
                 cursor.execute("ALTER TABLE positions ADD COLUMN order_id TEXT")
                 conn.commit()
+
+            # Add highest_price (สำหรับ Trailing Stop) if it doesn't exist
+            cursor.execute("PRAGMA table_info(positions)")
+            cols = [col[1] for col in cursor.fetchall()]
+            if "highest_price" not in cols:
+                cursor.execute("ALTER TABLE positions ADD COLUMN highest_price REAL")
+                conn.commit()
+
+            # Create cooldowns table (พักการเข้าซื้อหลังขายขาดทุน)
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS cooldowns (
+                    symbol TEXT,
+                    mode TEXT DEFAULT 'Dry-Run',
+                    until_ts REAL,
+                    last_pnl_pct REAL,
+                    created_at TEXT,
+                    PRIMARY KEY (symbol, mode)
+                )
+            """)
+            conn.commit()
             
             # Create trade_history table
             cursor.execute("""
@@ -319,7 +402,7 @@ class BotRunner:
 
     def load_positions_from_db(self):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._db_connect()
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
@@ -340,7 +423,8 @@ class BotRunner:
                     "trade_direction": row["trade_direction"],
                     "leverage": row["leverage"],
                     "margin_mode": row["margin_mode"],
-                    "order_id": row["order_id"] if "order_id" in row.keys() else ""
+                    "order_id": row["order_id"] if "order_id" in row.keys() else "",
+                    "highest_price": (row["highest_price"] if "highest_price" in row.keys() and row["highest_price"] else row["buy_price"])
                 }
             conn.close()
         except Exception as e:
@@ -349,14 +433,14 @@ class BotRunner:
 
     def save_position_db(self, symbol, pos):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._db_connect()
             cursor = conn.cursor()
             mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
             cursor.execute("""
                 INSERT OR REPLACE INTO positions (
                     symbol, mode, buy_price, buy_time, amount, current_price,
-                    pnl_percent, pnl_thb, trade_direction, leverage, margin_mode, order_id
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    pnl_percent, pnl_thb, trade_direction, leverage, margin_mode, order_id, highest_price
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 symbol,
                 pos.get("mode", mode),
@@ -369,7 +453,8 @@ class BotRunner:
                 pos.get("trade_direction", "long"),
                 pos.get("leverage", 1),
                 pos.get("margin_mode", "spot"),
-                pos.get("order_id", "")
+                pos.get("order_id", ""),
+                pos.get("highest_price", pos["buy_price"])
             ))
             conn.commit()
             conn.close()
@@ -378,7 +463,7 @@ class BotRunner:
 
     def delete_position_db(self, symbol):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._db_connect()
             cursor = conn.cursor()
             mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
             cursor.execute("DELETE FROM positions WHERE symbol = ? AND mode = ?", (symbol, mode))
@@ -387,9 +472,79 @@ class BotRunner:
         except Exception as e:
             self.add_log(f"Error deleting position {symbol} from DB: {str(e)}")
 
+    def load_cooldowns_from_db(self):
+        """โหลด cooldown ที่ยังไม่หมดอายุจาก DB (กันหายเมื่อรีสตาร์ทบอท)"""
+        self.cooldowns = {}
+        try:
+            conn = self._db_connect()
+            cursor = conn.cursor()
+            mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
+            cursor.execute("SELECT symbol, until_ts FROM cooldowns WHERE mode = ?", (mode,))
+            now = time.time()
+            for symbol, until_ts in cursor.fetchall():
+                if until_ts and float(until_ts) > now:
+                    self.cooldowns[symbol] = float(until_ts)
+                else:
+                    cursor.execute("DELETE FROM cooldowns WHERE symbol = ? AND mode = ?", (symbol, mode))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            self.add_log(f"Error loading cooldowns from DB: {str(e)}")
+
+    def save_cooldown_db(self, symbol, until_ts, pnl_pct):
+        try:
+            conn = self._db_connect()
+            cursor = conn.cursor()
+            mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
+            cursor.execute("""
+                INSERT OR REPLACE INTO cooldowns (symbol, mode, until_ts, last_pnl_pct, created_at)
+                VALUES (?, ?, ?, ?, ?)
+            """, (symbol, mode, float(until_ts), float(pnl_pct), datetime.now().strftime("%Y-%m-%d %H:%M:%S")))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            self.add_log(f"Error saving cooldown {symbol} to DB: {str(e)}")
+
+    def delete_cooldown_db(self, symbol):
+        try:
+            conn = self._db_connect()
+            cursor = conn.cursor()
+            mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
+            cursor.execute("DELETE FROM cooldowns WHERE symbol = ? AND mode = ?", (symbol, mode))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            self.add_log(f"Error deleting cooldown {symbol} from DB: {str(e)}")
+
+    def register_cooldown(self, symbol, pnl_pct):
+        """ตั้ง cooldown หลังขาย เพื่อพักการเข้าซื้อเหรียญเดิมชั่วคราว"""
+        if not self.config.get("cooldown_enabled", False):
+            return
+        # ถ้าตั้งให้พักเฉพาะตอนขาดทุน และรอบนี้กำไร/เสมอ ก็ไม่ต้องพัก
+        if self.config.get("cooldown_after_loss_only", True) and pnl_pct >= 0:
+            return
+        minutes = float(self.config.get("cooldown_minutes", 30))
+        if minutes <= 0:
+            return
+        until_ts = time.time() + minutes * 60
+        self.cooldowns[symbol] = until_ts
+        self.save_cooldown_db(symbol, until_ts, pnl_pct)
+        resume_at = datetime.fromtimestamp(until_ts).strftime("%H:%M:%S")
+        self.add_log(f"⏳ [Cooldown] {symbol} paused {minutes:.0f} min after PnL {pnl_pct:.2f}%. Resume at {resume_at}.")
+
+    def is_in_cooldown(self, symbol):
+        until = self.cooldowns.get(symbol, 0)
+        if not until:
+            return False
+        if time.time() >= until:
+            self.cooldowns.pop(symbol, None)
+            self.delete_cooldown_db(symbol)
+            return False
+        return True
+
     def sync_positions_db(self):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._db_connect()
             cursor = conn.cursor()
             mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
             cursor.execute("DELETE FROM positions WHERE mode = ?", (mode,))
@@ -397,8 +552,8 @@ class BotRunner:
                 cursor.execute("""
                     INSERT OR REPLACE INTO positions (
                         symbol, mode, buy_price, buy_time, amount, current_price,
-                        pnl_percent, pnl_thb, trade_direction, leverage, margin_mode, order_id
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        pnl_percent, pnl_thb, trade_direction, leverage, margin_mode, order_id, highest_price
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     symbol,
                     pos.get("mode", mode),
@@ -411,7 +566,8 @@ class BotRunner:
                     pos.get("trade_direction", "long"),
                     pos.get("leverage", 1),
                     pos.get("margin_mode", "spot"),
-                    pos.get("order_id", "")
+                    pos.get("order_id", ""),
+                    pos.get("highest_price", pos["buy_price"])
                 ))
             conn.commit()
             conn.close()
@@ -420,7 +576,7 @@ class BotRunner:
 
     def save_history_db(self, h):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._db_connect()
             cursor = conn.cursor()
             cursor.execute("""
                 INSERT INTO trade_history (
@@ -452,7 +608,7 @@ class BotRunner:
 
     def save_ai_watchlist_db(self, symbol, ai_result, last_price, status="active"):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._db_connect()
             cursor = conn.cursor()
             mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -481,7 +637,7 @@ class BotRunner:
 
     def get_ai_watchlist(self, limit=50):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._db_connect()
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
@@ -502,7 +658,7 @@ class BotRunner:
 
     def update_latest_ai_watchlist_status(self, symbol, status):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._db_connect()
             cursor = conn.cursor()
             mode = "Dry-Run" if self.config.get("dry_run", True) else "LIVE"
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -523,7 +679,7 @@ class BotRunner:
 
     def get_history(self):
         try:
-            conn = sqlite3.connect(self.db_path)
+            conn = self._db_connect()
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM trade_history ORDER BY id ASC")
@@ -660,10 +816,10 @@ class BotRunner:
                 
                 # โหลดกลยุทธ์ที่ใช้อยู่ขณะนี้
                 active_strat = self.get_active_strategy()
-                
-                # อัปเดตราคาล่าสุดสำหรับคำนวณ PnL
-                self.update_active_positions_pnl()
-                
+
+                # หมายเหตุ: PnL + SL/Trailing/TP อัปเดตแบบ real-time โดย price_loop (เธรดแยก) แล้ว
+                # scan loop นี้โฟกัสที่สัญญาณจากแท่งเทียน (กลยุทธ์ซื้อ/ขาย) เท่านั้น
+
                 # วนลูปเช็คสัญญาณแต่ละคู่เหรียญ
                 for symbol in self.config.get("symbols", []):
                     if self.stop_event.is_set():
@@ -692,6 +848,31 @@ class BotRunner:
             # รอ 60 วินาที (เช็คสัญญาณทุกๆ 1 นาที)
             self.stop_event.wait(60)
 
+    def get_market_regime(self):
+        """ประเมินสภาพตลาดรวมจากเหรียญอ้างอิง (BTC) เทียบ EMA ระยะยาวบน TF ใหญ่
+        คืน (regime, price, ema) โดย regime = 'bull' (>= EMA) หรือ 'bear' (< EMA)
+        ผล cache 15 นาที และ fail-open (คืน 'bull') เมื่อดึงข้อมูลไม่ได้ เพื่อไม่ให้บอทค้าง"""
+        now = time.time()
+        cached = self._regime_cache
+        if cached and (now - cached["ts"] < 900):
+            return cached["regime"], cached["price"], cached["ema"]
+
+        ref = self.config.get("regime_reference_symbol", "BTC/THB")
+        tf = str(self.config.get("regime_timeframe", "240"))
+        period = int(self.config.get("regime_ema_period", 200))
+        try:
+            df = self.fetch_ohlcv(ref, tf, limit=period + 60)
+            if df.empty or len(df) < period:
+                return "bull", 0.0, 0.0  # ข้อมูลไม่พอ -> ไม่บล็อก
+            ema = float(df["close"].ewm(span=period, adjust=False).mean().iloc[-1])
+            price = float(df["close"].iloc[-1])
+            regime = "bull" if price >= ema else "bear"
+            self._regime_cache = {"ts": now, "regime": regime, "price": price, "ema": ema}
+            return regime, price, ema
+        except Exception as e:
+            self.add_log(f"[Regime Filter] ประเมินสภาพตลาดไม่สำเร็จ: {str(e)} (ข้ามการบล็อก)")
+            return "bull", 0.0, 0.0
+
     def check_and_execute_buy(self, symbol, df, active_strat):
         max_open_trades = int(self.config.get("max_open_trades", 3))
         max_budget = float(self.config.get("max_budget_thb", 5000.0))
@@ -699,8 +880,30 @@ class BotRunner:
 
         if active_strat.check_buy_signal(df):
             last_price = float(df.iloc[-1]["close"])
-            
+
             self.add_log(f"🟢 [BUY SIGNAL] {symbol} at {last_price:,.2f} THB")
+
+            # Cooldown — พักการเข้าซื้อเหรียญเดิมหลังเพิ่งขายขาดทุน (กัน whipsaw)
+            if self.is_in_cooldown(symbol):
+                remaining_sec = max(0, int(self.cooldowns.get(symbol, 0) - time.time()))
+                self.add_log(f"⏳ [Cooldown] Skip buy for {symbol}: cooling down {remaining_sec // 60}m {remaining_sec % 60}s more.")
+                return
+
+            # Market Regime Filter — เกราะตลาดหมี (ยกเว้นกลยุทธ์ที่ออกแบบมาเล่นขาลงโดยตรง เช่น Bounce Scalper)
+            strat_market = self.build_strategy_meta().get("market_condition", "sideway")
+            if self.config.get("regime_filter_enabled", True) and strat_market != "downtrend":
+                regime, rprice, rema = self.get_market_regime()
+                if regime == "bear":
+                    ref = self.config.get("regime_reference_symbol", "BTC/THB")
+                    period = int(self.config.get("regime_ema_period", 200))
+                    action = str(self.config.get("regime_action", "block")).lower()
+                    if action == "reduce":
+                        factor = float(self.config.get("regime_reduce_factor", 0.5))
+                        stake = round(stake * factor, 2)
+                        self.add_log(f"🐻 [Regime Filter] ตลาดหมี ({ref} {rprice:,.0f} < EMA{period} {rema:,.0f}) — ลด stake เหลือ {stake:,.2f} THB สำหรับ {symbol}")
+                    else:
+                        self.add_log(f"🐻 [Regime Filter] ตลาดหมี ({ref} {rprice:,.0f} < EMA{period} {rema:,.0f}) — งดเข้าซื้อ {symbol}")
+                        return
 
             if len(self.positions) >= max_open_trades:
                 self.add_log(f"Max open trades reached ({max_open_trades}). Skip AI review and buy for {symbol}.")
@@ -717,6 +920,11 @@ class BotRunner:
                 return
 
             if not self.config["dry_run"]:
+                can_order, reason = self.can_place_live_order(symbol, "buy")
+                if not can_order:
+                    self.add_log(f"Skip LIVE buy for {symbol}: {reason}")
+                    return
+
                 try:
                     available_thb = self.get_live_available_balance("THB")
                 except Exception as e:
@@ -750,7 +958,8 @@ class BotRunner:
                     "pnl_thb": 0.0,
                     "trade_direction": "long",
                     "leverage": 1,
-                    "margin_mode": "spot"
+                    "margin_mode": "spot",
+                    "highest_price": last_price
                 }
                 self.sync_positions_db()
                 self.update_latest_ai_watchlist_status(symbol, "used")
@@ -782,7 +991,8 @@ class BotRunner:
                             "order_id": order.get("id"),
                             "trade_direction": "long",
                             "leverage": 1,
-                            "margin_mode": "spot"
+                            "margin_mode": "spot",
+                            "highest_price": filled_price
                         }
                         self.sync_positions_db()
                         self.update_latest_ai_watchlist_status(symbol, "used")
@@ -802,11 +1012,13 @@ class BotRunner:
         try:
             market_snapshot = self.build_market_snapshot(df, last_price)
             positions_snapshot = self.build_positions_snapshot()
+            strategy_meta = self.build_strategy_meta()
             result = self.ai_analyzer.analyze_buy_signal(
                 symbol=symbol,
                 market_snapshot=market_snapshot,
                 positions_snapshot=positions_snapshot,
                 config=self.config,
+                strategy_meta=strategy_meta,
             )
             self.ai_watchlist[symbol] = result
             status = "active" if result.get("decision") in ("buy", "watch") else "skipped"
@@ -835,6 +1047,22 @@ class BotRunner:
             return False
         return True
 
+    def build_strategy_meta(self):
+        """ดึง metadata ของกลยุทธ์ปัจจุบัน เพื่อส่งให้ AI เข้าใจ "สไตล์" ที่กำลังกรอง"""
+        try:
+            from strategies import STRATEGY_REGISTRY
+            strat_id = self.config.get("strategy", "multi_indicator")
+            meta = STRATEGY_REGISTRY.get(strat_id, {})
+            return {
+                "id": strat_id,
+                "name": meta.get("name", strat_id),
+                "market_condition": meta.get("market_condition", "sideway"),
+                "risk_level": meta.get("risk_level", "medium"),
+                "buy_logic": meta.get("buy_logic", ""),
+            }
+        except Exception:
+            return {"id": self.config.get("strategy", "multi_indicator"), "market_condition": "sideway"}
+
     def build_market_snapshot(self, df, last_price):
         last = df.iloc[-1]
         previous = df.iloc[-2] if len(df) >= 2 else last
@@ -847,12 +1075,19 @@ class BotRunner:
             "volume": float(last.get("volume", 0.0)),
             "volume_avg_20": round(volume_avg, 4),
         }
-        for key in ["rsi", "macd", "macd_signal", "ema_fast", "ema_slow", "bb_upper", "bb_middle", "bb_lower"]:
-            if key in df.columns:
-                try:
-                    snapshot[key] = float(last[key])
-                except Exception:
-                    pass
+        # ส่งอินดิเคเตอร์ "ทุกตัว" ที่กลยุทธ์ปัจจุบันคำนวณไว้แบบ dynamic
+        # (ไม่ fix ชื่อคอลัมน์ เพื่อให้รองรับทุกกลยุทธ์ เช่น supertrend/st_dir/ema_trend/bb_mid/macd_line)
+        base_cols = {"timestamp", "open", "high", "low", "close", "volume"}
+        for col in df.columns:
+            if col in base_cols or col in snapshot:
+                continue
+            try:
+                val = float(last[col])
+            except (TypeError, ValueError):
+                continue
+            if math.isnan(val) or math.isinf(val):
+                continue
+            snapshot[col] = round(val, 6)
         return snapshot
 
     def build_positions_snapshot(self):
@@ -868,35 +1103,69 @@ class BotRunner:
         return snapshot
 
     def check_and_execute_sell(self, symbol, df, active_strat):
-        position = self.positions[symbol]
-        last_price = float(df.iloc[-1]["close"])
+        """เช็คสัญญาณขายจากแท่งเทียน (กลยุทธ์) — ส่วน SL/Trailing/TP ตามราคา real-time ทำใน price_loop"""
+        with self.trade_lock:
+            if symbol not in self.positions:
+                return
+            position = self.positions[symbol]
+            last_price = float(df.iloc[-1]["close"])
+            buy_price = position["buy_price"]
+
+            # อัปเดตจุดสูงสุดจากราคาปิดแท่งด้วย (เผื่อ price_loop ยังไม่ทัน)
+            highest_price = float(position.get("highest_price") or buy_price)
+            if last_price > highest_price:
+                position["highest_price"] = last_price
+                self.save_position_db(symbol, position)
+
+            # 1. สัญญาณขายของกลยุทธ์ (ต้องใช้ข้อมูลอินดิเคเตอร์จากแท่งเทียน)
+            if active_strat.check_sell_signal(df):
+                self.add_log(f"🔴 [SELL SIGNAL] {symbol} because: Strategy Sell Signal | Current price: {last_price:,.2f} THB")
+                self.execute_sell(symbol, last_price, "Strategy Sell Signal")
+                return
+
+            # 2. เผื่อ price_loop หยุด/พลาด — เช็ค SL/Trailing/TP ตามราคาปิดแท่งเป็น fallback
+            self.evaluate_price_exit(symbol, last_price)
+
+    def evaluate_price_exit(self, symbol, current_price):
+        """เช็ค Stop Loss / Trailing Stop / Take Profit ตามราคาที่ส่งเข้ามา แล้วขายถ้าเข้าเงื่อนไข
+        เรียกได้จากทั้ง price_loop (real-time ticker) และ scan loop (ราคาปิดแท่ง)
+        ต้องเรียกภายใต้ self.trade_lock"""
+        position = self.positions.get(symbol)
+        if not position:
+            return
         buy_price = position["buy_price"]
-        
-        # คำนวณ PnL ณ ปัจจุบัน
-        pnl_pct = ((last_price - buy_price) / buy_price) * 100
-        
-        # 1. เช็คสัญญาณขายของกลยุทธ์
-        sell_signal = active_strat.check_sell_signal(df)
-        
-        # 2. เช็ค Stop Loss
+        pnl_pct = ((current_price - buy_price) / buy_price) * 100
+        highest_price = float(position.get("highest_price") or buy_price)
+        peak_pnl_pct = ((highest_price - buy_price) / buy_price) * 100
+
         stop_loss_hit = pnl_pct <= self.config["stop_loss_pct"]
-        
-        # 3. เช็ค Take Profit
         take_profit_hit = pnl_pct >= self.config["take_profit_pct"]
-        
+
+        trailing_hit = False
+        if self.config.get("trailing_stop_enabled", False):
+            activation = float(self.config.get("trailing_activation_pct", 3.0))
+            trail_dist = float(self.config.get("trailing_stop_pct", 2.0))
+            if peak_pnl_pct >= activation and trail_dist > 0:
+                if current_price <= highest_price * (1 - trail_dist / 100.0):
+                    trailing_hit = True
+
         reason = ""
-        if sell_signal:
-            reason = "Strategy Sell Signal"
-        elif stop_loss_hit:
+        if stop_loss_hit:
             reason = f"Stop Loss Hit ({pnl_pct:.2f}%)"
+        elif trailing_hit:
+            reason = f"Trailing Stop Hit (peak +{peak_pnl_pct:.2f}%, now {pnl_pct:+.2f}%)"
         elif take_profit_hit:
             reason = f"Take Profit Hit ({pnl_pct:.2f}%)"
-            
+
         if reason:
-            self.add_log(f"🔴 [SELL SIGNAL] {symbol} because: {reason} | Current price: {last_price:,.2f} THB")
-            self.execute_sell(symbol, last_price, reason)
+            self.add_log(f"🔴 [SELL SIGNAL] {symbol} because: {reason} | Current price: {current_price:,.2f} THB")
+            self.execute_sell(symbol, current_price, reason)
 
     def execute_sell(self, symbol, current_price, reason="Manual"):
+        with self.trade_lock:
+            return self._execute_sell_locked(symbol, current_price, reason)
+
+    def _execute_sell_locked(self, symbol, current_price, reason="Manual"):
         self.last_trade_error = ""
         if symbol not in self.positions:
             self.last_trade_error = f"No active position found for {symbol}."
@@ -931,10 +1200,11 @@ class BotRunner:
             
             # บันทึกลงประวัติและลบตัวถือครอง
             self.save_history_db(trade_record)
-            
+
             del self.positions[symbol]
             self.delete_position_db(symbol)
-            
+            self.register_cooldown(symbol, pnl_pct)
+
             self.add_log(f"📤 [Dry-Run Sell] Sold {amount:.6f} {symbol.split('/')[0]} | PnL: {pnl_pct:.2f}% ({pnl_thb:,.2f} THB)")
             return True
         else:
@@ -1007,7 +1277,8 @@ class BotRunner:
                     else:
                         del self.positions[symbol]
                         self.delete_position_db(symbol)
-                    
+                        self.register_cooldown(symbol, pnl_pct)
+
                     self.add_log(f"📤 [LIVE Sell] Sold successfully | PnL: {pnl_pct:.2f}% ({pnl_thb:,.2f} THB)")
                     return True
             except Exception as e:
@@ -1016,38 +1287,72 @@ class BotRunner:
                 
         return False
 
+    def price_loop(self):
+        """เธรดดึงราคา real-time (รันตลอดอายุโปรเซส)
+        - อัปเดต PnL ใน memory ให้ dashboard เห็นแบบ live (web อ่าน memory จึงไม่กระตุก)
+        - เช็ค Stop Loss / Trailing Stop / Take Profit แบบไว เฉพาะตอนบอทกำลังรัน
+        - poll เฉพาะตอนมี position เพื่อประหยัด rate limit"""
+        while True:
+            try:
+                interval = float(self.config.get("price_poll_seconds", 5) or 5)
+                if self.positions:
+                    self.update_active_positions_pnl()
+                    if not self.config.get("dry_run", True) and self.config.get("is_running", False):
+                        self.reconcile_live_positions_with_wallet()
+            except Exception as e:
+                self.add_log(f"Error in price loop: {str(e)}")
+            time.sleep(max(2.0, interval))
+
     def update_active_positions_pnl(self):
-        # สแกนหาความเคลื่อนไหวราคาปัจจุบันเพื่อทำ Realtime PnL
+        # ดึง ticker ครั้งเดียวได้ราคาทุกคู่ -> cost คงที่ไม่ว่ามีกี่ position
         if not self.positions:
             return
-            
+
         try:
-            # ดึงราคา Ticker ล่าสุดเพื่ออัปเดตราคาแบบไว
             url = "https://api.bitkub.com/api/market/ticker"
             r = bitkub_http.get(url, timeout=5)
-            if r.status_code == 200:
-                ticker_data = r.json()
-                
-                for symbol, pos in list(self.positions.items()):
-                    parts = symbol.split("/")
-                    if len(parts) == 2:
-                        bitkub_symbol = f"THB_{parts[0]}"
-                    else:
-                        bitkub_symbol = symbol
-                        
-                    if bitkub_symbol in ticker_data:
-                        current_price = float(ticker_data[bitkub_symbol]["last"])
-                        buy_price = pos["buy_price"]
-                        amount = pos["amount"]
-                        
-                        # อัปเดตราคา
-                        pos["current_price"] = current_price
-                        pos["pnl_percent"] = ((current_price - buy_price) / buy_price) * 100
-                        pos["pnl_thb"] = (amount * current_price * 0.9975) - (amount * buy_price)
-                        
-                self.sync_positions_db()
+            if r.status_code != 200:
+                return
+            ticker_data = r.json()
         except Exception as e:
             self.add_log(f"Error updating positions PnL: {str(e)}")
+            return
+
+        # ขายตามราคา real-time เฉพาะตอนบอทกำลังรันจริง (ถ้าหยุดบอท จะอัปเดตราคาเฉยๆ ไม่ trade)
+        trading_active = self.config.get("is_running", False) and not self.stop_event.is_set()
+
+        for symbol in list(self.positions.keys()):
+            parts = symbol.split("/")
+            bitkub_symbol = f"THB_{parts[0]}" if len(parts) == 2 else symbol
+            entry = ticker_data.get(bitkub_symbol)
+            if not entry:
+                continue
+            try:
+                current_price = float(entry["last"])
+            except (KeyError, TypeError, ValueError):
+                continue
+
+            with self.trade_lock:
+                pos = self.positions.get(symbol)
+                if not pos:
+                    continue
+                buy_price = pos["buy_price"]
+                amount = pos["amount"]
+
+                # อัปเดต PnL ใน memory (ไม่เขียน DB ทุก tick เพื่อลด lock contention กับ web)
+                pos["current_price"] = current_price
+                pos["pnl_percent"] = ((current_price - buy_price) / buy_price) * 100
+                pos["pnl_thb"] = (amount * current_price * 0.9975) - (amount * buy_price)
+
+                # อัปเดตจุดสูงสุด -> เขียน DB เฉพาะตอนค่าขยับ (สำคัญต่อ Trailing ข้าม restart)
+                highest_price = float(pos.get("highest_price") or buy_price)
+                if current_price > highest_price:
+                    pos["highest_price"] = current_price
+                    self.save_position_db(symbol, pos)
+
+                # เช็ค SL/Trailing/TP แบบ real-time
+                if trading_active:
+                    self.evaluate_price_exit(symbol, current_price)
 
     # ส่งคำสั่งเทรดจริงบน Bitkub API (REST v3)
     def reconcile_live_positions_with_wallet(self, force=False):
@@ -1167,6 +1472,10 @@ class BotRunner:
             
         parts = symbol.upper().split('/')
         bitkub_symbol = f"{parts[0]}_{parts[1]}".lower() if len(parts) == 2 else symbol.lower()
+
+        can_order, reason = self.can_place_live_order(symbol, side)
+        if not can_order:
+            raise ValueError(reason)
         
         path = "/api/v3/market/place-bid" if side == "buy" else "/api/v3/market/place-ask"
 

@@ -42,6 +42,13 @@ import {
 import type { BotConfig, StrategyInfo } from "./dashboardTypes";
 import { GeminiLogo, DeepSeekLogo } from "./Logos";
 
+// จัดกลุ่มกลยุทธ์ตามสภาพตลาดที่เหมาะ เพื่อให้เลือกถูกตามสถานการณ์
+const MARKET_GROUPS: { key: string; label: string; hint: string; color: string }[] = [
+  { key: "uptrend", label: "📈 ตลาดขาขึ้น (Uptrend)", hint: "เทรดตามแรงเทรนด์ — ถือกำไรยาว", color: "#00c16a" },
+  { key: "sideway", label: "↔️ ตลาด Sideway (ออกข้าง)", hint: "เล่นในกรอบ — ซื้อต่ำขายสูง / จับกลับตัว", color: "#fbbf24" },
+  { key: "downtrend", label: "📉 ตลาดขาลง (Downtrend)", hint: "เก็บเด้งสั้น counter-trend — เข้าน้อย ออกไว", color: "#ef5b63" },
+];
+
 interface SettingsViewProps {
   botConfig: BotConfig;
   updateBotConfigDraft: (patch: Partial<BotConfig>) => void;
@@ -57,6 +64,23 @@ interface NumberStepperProps {
   min?: number;
   onChange: (value: number) => void;
   suffix?: string;
+}
+
+interface RegimeStatus {
+  status: string;
+  enabled: boolean;
+  reference_symbol: string;
+  timeframe: string;
+  ema_period: number;
+  regime: "bull" | "bear" | string;
+  price: number;
+  ema: number;
+  gap_pct: number;
+  action: string;
+  recommended_enabled: boolean;
+  recommendation: string;
+  reason: string;
+  updated_at: number;
 }
 
 function NumberStepper({ value, step, min, onChange, suffix }: NumberStepperProps) {
@@ -139,6 +163,8 @@ export function SettingsView({
   const [selectedSymbolToAdd, setSelectedSymbolToAdd] = useState<string | null>(null);
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [strategiesLoading, setStrategiesLoading] = useState(false);
+  const [regimeStatus, setRegimeStatus] = useState<RegimeStatus | null>(null);
+  const [regimeLoading, setRegimeLoading] = useState(false);
 
   // Credentials States
   const [dbUsername, setDbUsername] = useState("");
@@ -175,9 +201,29 @@ export function SettingsView({
     }
   };
 
+  const fetchRegimeStatus = async () => {
+    setRegimeLoading(true);
+    try {
+      const res = await fetch("/api/bot/regime-status");
+      if (res.ok) {
+        const data = await res.json();
+        if (data.status === "success") {
+          setRegimeStatus(data);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to fetch market regime status", err);
+    } finally {
+      setRegimeLoading(false);
+    }
+  };
+
   React.useEffect(() => {
     if (tabIndex === 4) {
       fetchCredentials();
+    }
+    if (tabIndex === 3) {
+      fetchRegimeStatus();
     }
   }, [tabIndex]);
 
@@ -310,6 +356,19 @@ export function SettingsView({
     riskBg = "rgba(251, 191, 36, 0.03)";
     riskDescription = "กลยุทธ์แบบสมดุล มุ่งเน้นการเติบโตของกำไรอย่างมั่นคงในสภาวะตลาดปกติ";
   }
+
+  const formatThb = (value?: number) => {
+    if (!value) return "-";
+    return value.toLocaleString("th-TH", { maximumFractionDigits: 2 });
+  };
+
+  const formatUpdatedAt = (timestamp?: number) => {
+    if (!timestamp) return "-";
+    return new Date(timestamp * 1000).toLocaleString("th-TH", {
+      dateStyle: "short",
+      timeStyle: "short",
+    });
+  };
 
   const settingsSections = [
     {
@@ -801,21 +860,15 @@ export function SettingsView({
                                     {botConfig.ai_provider === "deepseek" ? (
                                       <>
                                         <Chip
-                                          label="deepseek-v4-pro"
-                                          size="small"
-                                          onClick={() => updateBotConfigDraft({ ai_model: "deepseek-v4-pro" })}
-                                          sx={{ height: 18, fontSize: "9px", cursor: "pointer", backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
-                                        />
-                                        <Chip
-                                          label="deepseek-reasoner"
+                                          label="DeepSeek R1 (deepseek-reasoner)"
                                           size="small"
                                           onClick={() => updateBotConfigDraft({ ai_model: "deepseek-reasoner" })}
                                           sx={{ height: 18, fontSize: "9px", cursor: "pointer", backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
                                         />
                                         <Chip
-                                          label="deepseek-chat"
+                                          label="DeepSeek V4 Pro (deepseek-v4-pro)"
                                           size="small"
-                                          onClick={() => updateBotConfigDraft({ ai_model: "deepseek-chat" })}
+                                          onClick={() => updateBotConfigDraft({ ai_model: "deepseek-v4-pro" })}
                                           sx={{ height: 18, fontSize: "9px", cursor: "pointer", backgroundColor: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.04)" }}
                                         />
                                       </>
@@ -955,9 +1008,29 @@ export function SettingsView({
                             <Typography sx={{ fontSize: "0.85rem", color: "text.secondary" }}>กำลังโหลดกลยุทธ์...</Typography>
                           </Box>
                         ) : (
-                          <Stack spacing={0.8}>
-                            {strategies.map((strat) => {
-                              const isActive = (botConfig.strategy || "multi_indicator") === strat.id;
+                          <Stack spacing={2}>
+                            {MARKET_GROUPS.map((group) => {
+                              const groupStrats = strategies.filter(
+                                (s) => (s.market_condition || "sideway") === group.key
+                              );
+                              if (groupStrats.length === 0) return null;
+                              return (
+                                <Box key={group.key}>
+                                  {/* หัวข้อกลุ่มสภาพตลาด */}
+                                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, mb: 0.8, pl: 0.2 }}>
+                                    <Box sx={{ width: 3, height: 20, borderRadius: 2, backgroundColor: group.color, flexShrink: 0 }} />
+                                    <Box>
+                                      <Typography sx={{ fontSize: "0.8rem", fontWeight: 700, color: group.color, lineHeight: 1.2 }}>
+                                        {group.label}
+                                      </Typography>
+                                      <Typography sx={{ fontSize: "0.68rem", color: "text.secondary" }}>
+                                        {group.hint}
+                                      </Typography>
+                                    </Box>
+                                  </Box>
+                                  <Stack spacing={0.8}>
+                                    {groupStrats.map((strat) => {
+                                      const isActive = (botConfig.strategy || "multi_indicator") === strat.id;
                               const riskColors: Record<string, { color: string; label: string }> = {
                                 low: { color: "#00c16a", label: "เสี่ยงต่ำ" },
                                 medium: { color: "#fbbf24", label: "เสี่ยงปานกลาง" },
@@ -970,7 +1043,11 @@ export function SettingsView({
                                   key={strat.id}
                                   onClick={() => {
                                     const patch: Partial<BotConfig> = { strategy: strat.id };
-                                    if (strat.risk_level === "low") {
+                                    // ใช้เกณฑ์ AI Gate ที่กลยุทธ์แนะนำเป็นพิเศษก่อน (เช่น counter-trend ที่ต้องผ่อนเกณฑ์)
+                                    if (typeof strat.ai_min_score === "number") {
+                                      patch.ai_min_score = strat.ai_min_score;
+                                      patch.ai_min_confidence = strat.ai_min_confidence ?? 0.5;
+                                    } else if (strat.risk_level === "low") {
                                       patch.ai_min_score = 75;
                                       patch.ai_min_confidence = 0.65;
                                     } else if (strat.risk_level === "medium") {
@@ -1095,6 +1172,10 @@ export function SettingsView({
                                     )}
                                   </Stack>
                                 </Paper>
+                              );
+                                    })}
+                                  </Stack>
+                                </Box>
                               );
                             })}
                           </Stack>
@@ -1452,6 +1533,251 @@ export function SettingsView({
                             </Stack>
                           </Box>
                         </Paper>
+
+                        {/* 3. Auto Risk Modules Card */}
+                        <Paper
+                          sx={{
+                            p: 2.5,
+                            borderRadius: "16px",
+                            backgroundColor: "rgba(13, 20, 35, 0.35)",
+                            border: "1px solid rgba(96, 165, 250, 0.15)",
+                          }}
+                        >
+                          <Typography sx={{ fontSize: "0.88rem", fontWeight: 700, color: "#60a5fa", mb: 2, display: "flex", alignItems: "center", gap: 1, fontFamily: "Outfit, sans-serif" }}>
+                            <Activity size={15} /> 3. ระบบจัดการความเสี่ยงอัตโนมัติ (Auto Risk Modules)
+                          </Typography>
+
+                          <Stack spacing={2}>
+                            {/* Trailing Stop */}
+                            <Box>
+                              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1 }}>
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography sx={{ fontSize: "0.84rem", fontWeight: 700, color: "text.primary" }}>📈 Trailing Stop (ล็อกกำไร)</Typography>
+                                  <Typography sx={{ fontSize: "0.74rem", color: "text.secondary", mt: 0.2 }}>
+                                    เริ่ม trail เมื่อกำไรถึงเกณฑ์ แล้วขายเมื่อราคาย่อจากจุดสูงสุด — กันกำไรหลุดกลับไปโดน SL
+                                  </Typography>
+                                </Box>
+                                <Switch
+                                  checked={botConfig.trailing_stop_enabled ?? true}
+                                  onChange={(e) => updateBotConfigDraft({ trailing_stop_enabled: e.target.checked })}
+                                  sx={{
+                                    "& .MuiSwitch-switchBase.Mui-checked": { color: "#60a5fa" },
+                                    "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#60a5fa" },
+                                  }}
+                                />
+                              </Box>
+                              {(botConfig.trailing_stop_enabled ?? true) && (
+                                <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2, mt: 1.5 }}>
+                                  <Stack spacing={0.8}>
+                                    <Typography sx={{ fontSize: "0.74rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>เริ่ม Trail เมื่อกำไร (Activation)</Typography>
+                                    <NumberStepper value={botConfig.trailing_activation_pct ?? 3} step={0.5} min={0} suffix="%" onChange={(value) => updateBotConfigDraft({ trailing_activation_pct: value })} />
+                                  </Stack>
+                                  <Stack spacing={0.8}>
+                                    <Typography sx={{ fontSize: "0.74rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>ย่อจากจุดสูงสุดแล้วขาย (Trail Distance)</Typography>
+                                    <NumberStepper value={botConfig.trailing_stop_pct ?? 2} step={0.5} min={0.1} suffix="%" onChange={(value) => updateBotConfigDraft({ trailing_stop_pct: value })} />
+                                  </Stack>
+                                </Box>
+                              )}
+                            </Box>
+
+                            <Divider sx={{ borderColor: "rgba(255,255,255,0.05)" }} />
+
+                            {/* Cooldown */}
+                            <Box>
+                              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1 }}>
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography sx={{ fontSize: "0.84rem", fontWeight: 700, color: "text.primary" }}>⏳ Cooldown (พักหลังขาดทุน)</Typography>
+                                  <Typography sx={{ fontSize: "0.74rem", color: "text.secondary", mt: 0.2 }}>
+                                    พักการเข้าซื้อเหรียญเดิมชั่วคราวหลังขายขาดทุน — กัน whipsaw ในตลาด sideways
+                                  </Typography>
+                                </Box>
+                                <Switch
+                                  checked={botConfig.cooldown_enabled ?? true}
+                                  onChange={(e) => updateBotConfigDraft({ cooldown_enabled: e.target.checked })}
+                                  sx={{
+                                    "& .MuiSwitch-switchBase.Mui-checked": { color: "#60a5fa" },
+                                    "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#60a5fa" },
+                                  }}
+                                />
+                              </Box>
+                              {(botConfig.cooldown_enabled ?? true) && (
+                                <Stack spacing={1.25} sx={{ mt: 1.5 }}>
+                                  <Stack spacing={0.8}>
+                                    <Typography sx={{ fontSize: "0.74rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>ระยะเวลาพัก (Cooldown)</Typography>
+                                    <NumberStepper value={botConfig.cooldown_minutes ?? 30} step={5} min={0} suffix="นาที" onChange={(value) => updateBotConfigDraft({ cooldown_minutes: Math.max(0, Math.round(value)) })} />
+                                  </Stack>
+                                  <Box
+                                    sx={{
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "space-between",
+                                      gap: 1.5,
+                                      p: 1.5,
+                                      borderRadius: "12px",
+                                      backgroundColor: (botConfig.cooldown_after_loss_only ?? true)
+                                        ? "rgba(96,165,250,0.06)"
+                                        : "rgba(2,6,23,0.35)",
+                                      border: (botConfig.cooldown_after_loss_only ?? true)
+                                        ? "1px solid rgba(96,165,250,0.18)"
+                                        : "1px solid rgba(255,255,255,0.05)",
+                                      transition: "all 0.2s ease",
+                                    }}
+                                  >
+                                    <Box sx={{ minWidth: 0 }}>
+                                      <Typography sx={{ fontSize: "0.8rem", fontWeight: 700, color: "text.primary" }}>
+                                        พักเฉพาะตอนขาดทุน
+                                      </Typography>
+                                      <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", mt: 0.25, lineHeight: 1.45 }}>
+                                        ถ้าขายได้กำไร บอทจะไม่ติด cooldown และสามารถรอสัญญาณซื้อรอบถัดไปได้ทันที
+                                      </Typography>
+                                    </Box>
+                                    <Switch
+                                      size="small"
+                                      checked={botConfig.cooldown_after_loss_only ?? true}
+                                      onChange={(e) => updateBotConfigDraft({ cooldown_after_loss_only: e.target.checked })}
+                                      sx={{
+                                        flexShrink: 0,
+                                        "& .MuiSwitch-switchBase.Mui-checked": { color: "#60a5fa" },
+                                        "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#60a5fa" },
+                                      }}
+                                    />
+                                  </Box>
+                                </Stack>
+                              )}
+                            </Box>
+
+                            <Divider sx={{ borderColor: "rgba(255,255,255,0.05)" }} />
+
+                            {/* Market Regime Filter */}
+                            <Box>
+                              <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1 }}>
+                                <Box sx={{ minWidth: 0 }}>
+                                  <Typography sx={{ fontSize: "0.84rem", fontWeight: 700, color: "text.primary" }}>🐻 Market Regime Filter (เกราะตลาดหมี)</Typography>
+                                  <Typography sx={{ fontSize: "0.74rem", color: "text.secondary", mt: 0.2 }}>
+                                    เช็ค BTC เทียบ EMA200 (4 ชม.) — ตลาดหมีจะงดซื้อ/ลด stake ให้ทุกกลยุทธ์ (ยกเว้นกลยุทธ์ขาลง เช่น Bounce Scalper)
+                                  </Typography>
+                                </Box>
+                                <Switch
+                                  checked={botConfig.regime_filter_enabled ?? true}
+                                  onChange={(e) => updateBotConfigDraft({ regime_filter_enabled: e.target.checked })}
+                                  sx={{
+                                    "& .MuiSwitch-switchBase.Mui-checked": { color: "#60a5fa" },
+                                    "& .MuiSwitch-switchBase.Mui-checked + .MuiSwitch-track": { backgroundColor: "#60a5fa" },
+                                  }}
+                                />
+                              </Box>
+                              <Stack spacing={1.5} sx={{ mt: 1.5 }}>
+                                  <Box
+                                    sx={{
+                                      p: 1.5,
+                                      borderRadius: "12px",
+                                      backgroundColor: regimeStatus?.regime === "bear"
+                                        ? "rgba(239,91,99,0.06)"
+                                        : "rgba(0,193,106,0.05)",
+                                      border: regimeStatus?.regime === "bear"
+                                        ? "1px solid rgba(239,91,99,0.18)"
+                                        : "1px solid rgba(0,193,106,0.14)",
+                                    }}
+                                  >
+                                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1.25, mb: 1.25 }}>
+                                      <Box sx={{ minWidth: 0 }}>
+                                        <Typography sx={{ fontSize: "0.78rem", fontWeight: 700, color: "text.primary" }}>
+                                          สถานะตลาดตอนนี้
+                                        </Typography>
+                                        <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", mt: 0.2 }}>
+                                          อ้างอิง {regimeStatus?.reference_symbol || "BTC/THB"} / EMA{regimeStatus?.ema_period || 200} / {regimeStatus?.timeframe || "240"} นาที
+                                        </Typography>
+                                      </Box>
+                                      <Button
+                                        size="small"
+                                        onClick={fetchRegimeStatus}
+                                        disabled={regimeLoading}
+                                        sx={{
+                                          minWidth: 0,
+                                          px: 1.1,
+                                          py: 0.55,
+                                          borderRadius: "9px",
+                                          fontSize: "0.72rem",
+                                          fontWeight: 700,
+                                          color: "#60a5fa",
+                                          textTransform: "none",
+                                          flexShrink: 0,
+                                        }}
+                                      >
+                                        {regimeLoading ? "กำลังเช็ก..." : "รีเฟรช"}
+                                      </Button>
+                                    </Box>
+
+                                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr 1fr", sm: "repeat(4, 1fr)" }, gap: 1 }}>
+                                      {[
+                                        { label: "ราคา BTC", value: `${formatThb(regimeStatus?.price)} THB` },
+                                        { label: "EMA", value: `${formatThb(regimeStatus?.ema)} THB` },
+                                        { label: "ส่วนต่าง", value: regimeStatus ? `${regimeStatus.gap_pct.toFixed(2)}%` : "-" },
+                                        { label: "สถานะ", value: regimeStatus?.regime === "bear" ? "ตลาดหมี" : regimeStatus?.regime === "bull" ? "ตลาดปกติ" : "-" },
+                                      ].map((item) => (
+                                        <Box key={item.label} sx={{ p: 1, borderRadius: "9px", backgroundColor: "rgba(2,6,23,0.28)", border: "1px solid rgba(255,255,255,0.04)" }}>
+                                          <Typography sx={{ fontSize: "0.66rem", color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.04em" }}>
+                                            {item.label}
+                                          </Typography>
+                                          <Typography sx={{ fontSize: "0.78rem", fontWeight: 700, color: "text.primary", mt: 0.25, fontFamily: "Outfit, monospace" }}>
+                                            {item.value}
+                                          </Typography>
+                                        </Box>
+                                      ))}
+                                    </Box>
+
+                                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: { xs: "flex-start", sm: "center" }, flexDirection: { xs: "column", sm: "row" }, gap: 1, mt: 1.25 }}>
+                                      <Typography sx={{ fontSize: "0.74rem", color: "text.secondary", lineHeight: 1.45 }}>
+                                        คำแนะนำ: <Box component="span" sx={{ color: regimeStatus?.regime === "bear" ? "#ef5b63" : "#00c16a", fontWeight: 700 }}>{regimeStatus?.recommendation || "กำลังรอข้อมูล"}</Box>
+                                        {regimeStatus?.reason ? ` — ${regimeStatus.reason}` : ""}
+                                      </Typography>
+                                      <Typography sx={{ fontSize: "0.68rem", color: "text.disabled", flexShrink: 0 }}>
+                                        อัปเดต {formatUpdatedAt(regimeStatus?.updated_at)}
+                                      </Typography>
+                                    </Box>
+                                  </Box>
+
+                                  {(botConfig.regime_filter_enabled ?? true) && (
+                                    <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 2 }}>
+                                      <Stack spacing={0.8}>
+                                        <Typography sx={{ fontSize: "0.74rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>เมื่อตลาดหมี (Bear Action)</Typography>
+                                        <Box sx={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 1 }}>
+                                          {[{ v: "block", label: "งดซื้อ" }, { v: "reduce", label: "ลด Stake" }].map((opt) => {
+                                            const active = (botConfig.regime_action || "block") === opt.v;
+                                            return (
+                                              <Button
+                                                key={opt.v}
+                                                onClick={() => updateBotConfigDraft({ regime_action: opt.v })}
+                                                sx={{
+                                                  py: 0.9,
+                                                  borderRadius: "9px",
+                                                  fontSize: "0.76rem",
+                                                  fontWeight: 700,
+                                                  textTransform: "none",
+                                                  color: active ? "#60a5fa" : "text.secondary",
+                                                  backgroundColor: active ? "rgba(96,165,250,0.1)" : "rgba(2,6,23,0.35)",
+                                                  border: active ? "1.5px solid rgba(96,165,250,0.4)" : "1.5px solid rgba(255,255,255,0.05)",
+                                                  "&:hover": { backgroundColor: active ? "rgba(96,165,250,0.14)" : "rgba(255,255,255,0.02)" },
+                                                }}
+                                              >
+                                                {opt.label}
+                                              </Button>
+                                            );
+                                          })}
+                                        </Box>
+                                      </Stack>
+                                      {(botConfig.regime_action || "block") === "reduce" && (
+                                        <Stack spacing={0.8}>
+                                          <Typography sx={{ fontSize: "0.74rem", fontWeight: 600, color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em" }}>สัดส่วน Stake ที่เหลือ (Reduce Factor)</Typography>
+                                          <NumberStepper value={botConfig.regime_reduce_factor ?? 0.5} step={0.1} min={0.1} suffix="x" onChange={(value) => updateBotConfigDraft({ regime_reduce_factor: Math.min(1, Math.max(0.1, value)) })} />
+                                        </Stack>
+                                      )}
+                                    </Box>
+                                  )}
+                                </Stack>
+                            </Box>
+                          </Stack>
+                        </Paper>
                       </Stack>
 
                       {/* Advanced Risk Evaluation Card */}
@@ -1658,7 +1984,7 @@ export function SettingsView({
                                     }}
                                   />
                                   <Typography sx={{ fontSize: "0.72rem", color: "text.secondary" }}>
-                                    ใช้สำหรับ AI Signal Review ผ่าน DeepSeek R1 เท่านั้น
+                                    ใช้สำหรับ AI Signal Review ผ่าน DeepSeek R1 หรือ DeepSeek V4 Pro
                                   </Typography>
                                 </Stack>
                               </Box>
@@ -1773,7 +2099,7 @@ export function SettingsView({
                           1. ล็อกอินเข้าสู่เว็บ Bitkub.com &gt; ไปที่หน้า <strong>Settings (ตั้งค่า)</strong> &gt; <strong>API (การจัดการ API)</strong><br />
                           2. กดสร้าง API Key ใหม่ โดยให้สิทธิ์ (Permissions) เฉพาะ <strong>Read Wallet (อ่าน)</strong> และ <strong>Trade (เทรด Spot)</strong> เท่านั้น<br />
                           3. <span style={{ color: "#ef5b63", fontWeight: 600 }}>ห้ามสลับสิทธิ์การถอนเงิน (WITHDRAW) เด็ดขาด</span> เพื่อความปลอดภัยสูงสุดของกระเป๋าพอร์ตคุณเอง<br />
-                          4. สำหรับระบบ AI Review: สร้าง API Key จาก <strong>Google AI Studio (Gemini)</strong> หรือ <strong>DeepSeek Open Platform (DeepSeek R1)</strong> เพื่อนำมากรอกใช้งานระบบกรองสัญญาณอัจฉริยะ
+                          4. สำหรับระบบ AI Review: สร้าง API Key จาก <strong>Google AI Studio (Gemini)</strong> หรือ <strong>DeepSeek Open Platform</strong> เพื่อนำมากรอกใช้งานระบบกรองสัญญาณอัจฉริยะ
                         </Typography>
                       </Paper>
                     </Stack>

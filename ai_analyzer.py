@@ -63,9 +63,11 @@ class GeminiTradeAnalyzer:
         market_snapshot: Dict[str, Any],
         positions_snapshot: Dict[str, Any],
         config: Dict[str, Any],
+        strategy_meta: Dict[str, Any] = None,
     ) -> Dict[str, Any]:
         market_snapshot = self._sanitize_floats(market_snapshot)
         positions_snapshot = self._sanitize_floats(positions_snapshot)
+        strategy_meta = strategy_meta or {}
         
         provider = config.get("ai_provider", "gemini").lower()
         
@@ -92,11 +94,11 @@ class GeminiTradeAnalyzer:
         if provider == "deepseek":
             model = config.get("ai_model") or "deepseek-reasoner"
             # Ensure model is appropriate for deepseek if it was set to gemini before
-            if "gemini" in model:
+            if model not in {"deepseek-reasoner", "deepseek-v4-pro"}:
                 model = "deepseek-reasoner"
                 
             url = "https://api.deepseek.com/chat/completions"
-            prompt = self._build_prompt(symbol, market_snapshot, positions_snapshot, config, provider)
+            prompt = self._build_prompt(symbol, market_snapshot, positions_snapshot, config, provider, strategy_meta)
             payload = {
                 "model": model,
                 "messages": [
@@ -126,7 +128,7 @@ class GeminiTradeAnalyzer:
                 model = "gemini-3.5-flash"
                 
             url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
-            prompt = self._build_prompt(symbol, market_snapshot, positions_snapshot, config, provider)
+            prompt = self._build_prompt(symbol, market_snapshot, positions_snapshot, config, provider, strategy_meta)
             payload = {
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
@@ -180,14 +182,22 @@ class GeminiTradeAnalyzer:
         market_snapshot: Dict[str, Any],
         positions_snapshot: Dict[str, Any],
         config: Dict[str, Any],
-        provider: str = "gemini"
+        provider: str = "gemini",
+        strategy_meta: Dict[str, Any] = None,
     ) -> str:
+        strategy_meta = strategy_meta or {}
         max_open = int(config.get("max_open_trades", 3))
         used_slots = len(positions_snapshot)
         min_score = int(config.get("ai_min_score", 65))
         min_confidence = float(config.get("ai_min_confidence", 0.55))
         context = {
             "symbol": symbol,
+            "strategy": {
+                "id": strategy_meta.get("id", "unknown"),
+                "name": strategy_meta.get("name", ""),
+                "market_condition": strategy_meta.get("market_condition", "sideway"),
+                "buy_logic": strategy_meta.get("buy_logic", ""),
+            },
             "market": market_snapshot,
             "active_positions": positions_snapshot,
             "risk_rules": {
@@ -202,11 +212,34 @@ class GeminiTradeAnalyzer:
                 "min_ai_confidence": min_confidence,
             },
         }
+
+        # อธิบายสไตล์ของกลยุทธ์ ให้ AI ประเมินบน "เงื่อนไขของกลยุทธ์เอง" ไม่ใช่อคติทั่วไป
+        market_condition = strategy_meta.get("market_condition", "sideway")
+        if market_condition == "downtrend":
+            style_note = (
+                "STRATEGY STYLE: This is a COUNTER-TREND mean-reversion (bounce) strategy built for DOWNTRENDS. "
+                "A falling price and a low/oversold RSI are the ENTRY PREMISE — they are NOT reasons to skip. "
+                "Judge the QUALITY of the potential bounce (sign of reversal, exhaustion of selling, volume), "
+                "not whether the broader trend is down. Do not penalize the signal simply for being contrarian. "
+            )
+        elif market_condition == "uptrend":
+            style_note = (
+                "STRATEGY STYLE: This is a TREND-FOLLOWING strategy for UPTRENDS. Favor entries aligned with an "
+                "established up-move and healthy momentum; be cautious mainly when momentum looks clearly exhausted. "
+            )
+        else:
+            style_note = (
+                "STRATEGY STYLE: This is a RANGE / mean-reversion strategy for SIDEWAYS markets. "
+                "Favor entries near range lows that show signs of reversal. "
+            )
+
         prompt = (
-            "You are a conservative crypto spot-trading signal reviewer for a Bitkub THB bot. "
-            "The strategy has already produced a BUY signal. Your job is only to score and filter it. "
-            "Do not invent prices. Prefer watch/skip when score or confidence is weak. "
+            "You are a crypto spot-trading signal reviewer for a Bitkub THB bot. "
+            "The strategy has already produced a BUY signal. Your job is only to score and filter it "
+            "ON THE STRATEGY'S OWN TERMS (see STRATEGY STYLE below). "
+            "Do not invent prices. Prefer watch/skip only when the signal is weak RELATIVE TO ITS OWN STYLE. "
             "If slots are full, do not force a buy; use watch and optionally name a weak replace_candidate. "
+            f"{style_note}"
             "CRITICAL: Write the 'reason' field in the JSON output in THAI language only.\n\n"
             f"Context:\n{json.dumps(context, ensure_ascii=False, default=str)}"
         )
