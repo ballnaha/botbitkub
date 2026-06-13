@@ -75,6 +75,8 @@ export type BotConfig = {
   trade_direction: string;
   leverage: number;
   symbols: string[];
+  market_universe_mode?: "fixed" | "top_gainers";
+  top_gainers_limit?: number;
   timeframe: string;
   strategy: string;
   ai_enabled: boolean;

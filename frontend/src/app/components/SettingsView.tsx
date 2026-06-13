@@ -39,14 +39,16 @@ import {
   Brain,
   Key,
 } from "lucide-react";
-import type { BotConfig, StrategyInfo } from "./dashboardTypes";
+import type { BotConfig, StrategyInfo, TickerData } from "./dashboardTypes";
 import { GeminiLogo, DeepSeekLogo } from "./Logos";
 
+type MarketGroupKey = "uptrend" | "sideway" | "downtrend";
+
 // จัดกลุ่มกลยุทธ์ตามสภาพตลาดที่เหมาะ เพื่อให้เลือกถูกตามสถานการณ์
-const MARKET_GROUPS: { key: string; label: string; hint: string; color: string }[] = [
-  { key: "uptrend", label: "📈 ตลาดขาขึ้น (Uptrend)", hint: "เทรดตามแรงเทรนด์ — ถือกำไรยาว", color: "#00c16a" },
-  { key: "sideway", label: "↔️ ตลาด Sideway (ออกข้าง)", hint: "เล่นในกรอบ — ซื้อต่ำขายสูง / จับกลับตัว", color: "#fbbf24" },
-  { key: "downtrend", label: "📉 ตลาดขาลง (Downtrend)", hint: "เก็บเด้งสั้น counter-trend — เข้าน้อย ออกไว", color: "#ef5b63" },
+const MARKET_GROUPS: { key: MarketGroupKey; label: string; shortLabel: string; hint: string; color: string }[] = [
+  { key: "uptrend", label: "ตลาดขาขึ้น (Uptrend)", shortLabel: "ขาขึ้น", hint: "เทรดตามแรงเทรนด์ ถือกำไรยาว", color: "#00c16a" },
+  { key: "sideway", label: "ตลาด Sideway (ออกข้าง)", shortLabel: "Sideway", hint: "เล่นในกรอบ ซื้อต่ำขายสูง / จับกลับตัว", color: "#fbbf24" },
+  { key: "downtrend", label: "ตลาดขาลง (Downtrend)", shortLabel: "ขาลง", hint: "เก็บเด้งสั้น counter-trend เข้าน้อย ออกไว", color: "#ef5b63" },
 ];
 
 interface SettingsViewProps {
@@ -54,6 +56,7 @@ interface SettingsViewProps {
   updateBotConfigDraft: (patch: Partial<BotConfig>) => void;
   actionLoading?: boolean;
   allSymbols?: string[];
+  tickers?: Record<string, TickerData>;
   autoSaveState?: "idle" | "saving" | "saved" | "error";
   onSaveConfig?: () => void;
 }
@@ -154,6 +157,7 @@ export function SettingsView({
   updateBotConfigDraft,
   actionLoading = false,
   allSymbols = [],
+  tickers = {},
   autoSaveState,
   onSaveConfig,
 }: SettingsViewProps) {
@@ -161,6 +165,7 @@ export function SettingsView({
   const [tabIndex, setTabIndex] = useState(0);
   const [confirmLiveOpen, setConfirmLiveOpen] = useState(false);
   const [selectedSymbolToAdd, setSelectedSymbolToAdd] = useState<string | null>(null);
+  const [selectedStrategyDetailId, setSelectedStrategyDetailId] = useState<string | null>(null);
   const [strategies, setStrategies] = useState<StrategyInfo[]>([]);
   const [strategiesLoading, setStrategiesLoading] = useState(false);
   const [regimeStatus, setRegimeStatus] = useState<RegimeStatus | null>(null);
@@ -318,6 +323,14 @@ export function SettingsView({
 
   const suggestedCoins = ["BTC/THB", "ETH/THB", "SOL/THB", "KUB/THB", "NEAR/THB", "DOGE/THB", "XRP/THB", "ADA/THB"]
     .filter((coin) => !(botConfig.symbols || []).includes(coin) && (allSymbols || []).includes(coin));
+  const topGainerPreview = Object.entries(tickers)
+    .filter(([, data]) => Number(data?.last || 0) > 0 && Number(data?.quoteVolume || 0) > 0 && Number(data?.percentage || 0) > 0)
+    .sort((a, b) => {
+      const pctDiff = Number(b[1].percentage || 0) - Number(a[1].percentage || 0);
+      if (pctDiff !== 0) return pctDiff;
+      return Number(b[1].quoteVolume || 0) - Number(a[1].quoteVolume || 0);
+    })
+    .slice(0, botConfig.top_gainers_limit ?? 20);
 
   const handleModeChange = (isDry: boolean) => {
     if (!isDry) {
@@ -370,6 +383,58 @@ export function SettingsView({
     });
   };
 
+  const riskColors: Record<string, { color: string; label: string }> = {
+    low: { color: "#00c16a", label: "เสี่ยงต่ำ" },
+    medium: { color: "#fbbf24", label: "เสี่ยงปานกลาง" },
+    high: { color: "#ef5b63", label: "เสี่ยงสูง" },
+  };
+  const riskRank: Record<string, number> = { low: 0, medium: 1, high: 2 };
+  const marketRank: Record<string, number> = { uptrend: 0, sideway: 1, downtrend: 2 };
+  const getStrategyGroup = (strat?: StrategyInfo) =>
+    MARKET_GROUPS.find((group) => group.key === (strat?.market_condition || "sideway")) || MARKET_GROUPS[1];
+  const activeStrategy = strategies.find((item) => item.id === (botConfig.strategy || "multi_indicator")) || strategies[0];
+  const selectedStrategyDetail =
+    strategies.find((item) => item.id === selectedStrategyDetailId) || activeStrategy;
+  const selectedStrategyDetailRisk = selectedStrategyDetail ? (riskColors[selectedStrategyDetail.risk_level] || riskColors.medium) : riskColors.medium;
+  const selectedStrategyDetailGroup = getStrategyGroup(selectedStrategyDetail);
+  const activeStrategyGroup = getStrategyGroup(activeStrategy);
+  const recommendedPresets = MARKET_GROUPS.map((group) => {
+    const groupStrategies = strategies.filter((item) => (item.market_condition || "sideway") === group.key);
+    const recommended =
+      [...groupStrategies].sort((a, b) => {
+        const riskDiff = (riskRank[a.risk_level] ?? 1) - (riskRank[b.risk_level] ?? 1);
+        if (riskDiff !== 0) return riskDiff;
+        return (b.ai_min_score ?? 0) - (a.ai_min_score ?? 0);
+      })[0] || null;
+
+    return { ...group, strategies: groupStrategies, recommended };
+  });
+  const advancedStrategies = [...strategies].sort((a, b) => {
+    const marketDiff = (marketRank[a.market_condition || "sideway"] ?? 1) - (marketRank[b.market_condition || "sideway"] ?? 1);
+    if (marketDiff !== 0) return marketDiff;
+    return (riskRank[a.risk_level] ?? 1) - (riskRank[b.risk_level] ?? 1);
+  });
+
+  const applyStrategy = (strat: StrategyInfo) => {
+    const patch: Partial<BotConfig> = { strategy: strat.id };
+    // ใช้เกณฑ์ AI Gate ที่กลยุทธ์แนะนำเป็นพิเศษก่อน (เช่น counter-trend ที่ต้องผ่อนเกณฑ์)
+    if (typeof strat.ai_min_score === "number") {
+      patch.ai_min_score = strat.ai_min_score;
+      patch.ai_min_confidence = strat.ai_min_confidence ?? 0.5;
+    } else if (strat.risk_level === "low") {
+      patch.ai_min_score = 75;
+      patch.ai_min_confidence = 0.65;
+    } else if (strat.risk_level === "medium") {
+      patch.ai_min_score = 65;
+      patch.ai_min_confidence = 0.55;
+    } else if (strat.risk_level === "high") {
+      patch.ai_min_score = 50;
+      patch.ai_min_confidence = 0.45;
+    }
+    setSelectedStrategyDetailId(strat.id);
+    updateBotConfigDraft(patch);
+  };
+
   const settingsSections = [
     {
       id: 0,
@@ -409,7 +474,7 @@ export function SettingsView({
   ];
 
   return (
-    <Box sx={{ width: "100%", maxWidth: 1180, mx: "auto", mt: { xs: 1, sm: 1.5 }, py: 0 }}>
+    <Box sx={{ width: "100%", maxWidth: 1440, mx: "auto", mt: { xs: 1, sm: 1.5 }, py: 0 }}>
       <Stack spacing={1.25}>
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.4, minWidth: 0, px: { xs: 0.5, sm: 0.25 }, py: 0.25 }}>
           <Box
@@ -1008,176 +1073,326 @@ export function SettingsView({
                             <Typography sx={{ fontSize: "0.85rem", color: "text.secondary" }}>กำลังโหลดกลยุทธ์...</Typography>
                           </Box>
                         ) : (
-                          <Stack spacing={2}>
-                            {MARKET_GROUPS.map((group) => {
-                              const groupStrats = strategies.filter(
-                                (s) => (s.market_condition || "sideway") === group.key
-                              );
-                              if (groupStrats.length === 0) return null;
-                              return (
-                                <Box key={group.key}>
-                                  {/* หัวข้อกลุ่มสภาพตลาด */}
-                                  <Box sx={{ display: "flex", alignItems: "center", gap: 0.8, mb: 0.8, pl: 0.2 }}>
-                                    <Box sx={{ width: 3, height: 20, borderRadius: 2, backgroundColor: group.color, flexShrink: 0 }} />
-                                    <Box>
-                                      <Typography sx={{ fontSize: "0.8rem", fontWeight: 700, color: group.color, lineHeight: 1.2 }}>
-                                        {group.label}
+                          <Stack spacing={1.2}>
+                            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
+                              <Box>
+                                <Typography sx={{ fontSize: "0.9rem", fontWeight: 900, color: "text.primary", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                  Recommended Presets
+                                </Typography>
+                                <Typography sx={{ fontSize: "0.86rem", color: "text.secondary", mt: 0.25 }}>
+                                  เริ่มจากชุดที่เหมาะกับสภาพตลาด แล้วค่อยปรับละเอียดในตารางขั้นสูง
+                                </Typography>
+                              </Box>
+                              {activeStrategy && (
+                                <Chip
+                                  label={`กำลังใช้: ${activeStrategy.name}`}
+                                  size="small"
+                                  sx={{
+                                    height: 28,
+                                    maxWidth: { xs: "100%", sm: 360 },
+                                    fontSize: "0.78rem",
+                                    fontWeight: 800,
+                                    color: activeStrategyGroup.color,
+                                    backgroundColor: `${activeStrategyGroup.color}10`,
+                                    border: `1px solid ${activeStrategyGroup.color}28`,
+                                    "& .MuiChip-label": { overflow: "hidden", textOverflow: "ellipsis" },
+                                  }}
+                                />
+                              )}
+                            </Box>
+
+                            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "repeat(3, minmax(0, 1fr))" }, gap: 1 }}>
+                              {recommendedPresets.map((preset) => {
+                                const strat = preset.recommended;
+                                const isActive = !!strat && (botConfig.strategy || "multi_indicator") === strat.id;
+                                const risk = strat ? (riskColors[strat.risk_level] || riskColors.medium) : riskColors.medium;
+                                return (
+                                  <Paper
+                                    key={preset.key}
+                                    onClick={() => strat && applyStrategy(strat)}
+                                    sx={{
+                                      p: 1.25,
+                                      borderRadius: "12px",
+                                      cursor: strat ? "pointer" : "default",
+                                      minHeight: 176,
+                                      backgroundColor: isActive ? `${preset.color}0d` : "rgba(8, 12, 20, 0.34)",
+                                      border: isActive ? `1px solid ${preset.color}55` : `1px solid ${preset.color}20`,
+                                      boxShadow: isActive ? `inset 0 3px 0 ${preset.color}` : "none",
+                                      transition: "all 0.2s ease",
+                                      "&:hover": strat ? { borderColor: `${preset.color}55`, backgroundColor: `${preset.color}08` } : undefined,
+                                    }}
+                                  >
+                                    <Stack spacing={1} sx={{ height: "100%" }}>
+                                      <Box sx={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 0.8 }}>
+                                        <Box sx={{ minWidth: 0 }}>
+                                          <Typography sx={{ fontSize: "0.96rem", fontWeight: 900, color: preset.color, lineHeight: 1.2 }}>
+                                            {preset.label}
+                                          </Typography>
+                                          <Typography sx={{ fontSize: "0.8rem", color: "text.secondary", mt: 0.3, lineHeight: 1.4 }}>
+                                            {preset.hint}
+                                          </Typography>
+                                        </Box>
+                                        <Chip
+                                          label={`${preset.strategies.length} ตัว`}
+                                          size="small"
+                                          sx={{
+                                            height: 24,
+                                            fontSize: "0.68rem",
+                                            fontWeight: 800,
+                                            color: preset.color,
+                                            backgroundColor: `${preset.color}10`,
+                                            border: `1px solid ${preset.color}26`,
+                                          }}
+                                        />
+                                      </Box>
+
+                                      {strat ? (
+                                        <>
+                                          <Box sx={{ minWidth: 0 }}>
+                                            <Typography sx={{ fontSize: "1.02rem", fontWeight: 850, color: isActive ? "primary.main" : "text.primary", lineHeight: 1.25 }}>
+                                              {strat.name}
+                                            </Typography>
+                                            <Typography sx={{ fontSize: "0.84rem", color: "text.secondary", mt: 0.4, lineHeight: 1.45 }}>
+                                              {strat.description}
+                                            </Typography>
+                                          </Box>
+                                          <Box sx={{ display: "flex", gap: 0.45, flexWrap: "wrap", mt: "auto" }}>
+                                            <Chip label={risk.label} size="small" sx={{ height: 23, fontSize: "0.68rem", fontWeight: 800, color: risk.color, backgroundColor: `${risk.color}12`, border: `1px solid ${risk.color}2c` }} />
+                                            <Chip label={`AI ${strat.ai_min_score ?? botConfig.ai_min_score}`} size="small" sx={{ height: 23, fontSize: "0.68rem", fontWeight: 800, color: "text.secondary", backgroundColor: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }} />
+                                            {isActive && <Chip label="ACTIVE" color="primary" size="small" sx={{ height: 23, fontSize: "0.68rem", fontWeight: 800 }} />}
+                                          </Box>
+                                        </>
+                                      ) : (
+                                        <Box sx={{ p: 1, borderRadius: "10px", color: "text.secondary", fontSize: "0.86rem", backgroundColor: "rgba(255,255,255,0.018)", border: "1px dashed rgba(255,255,255,0.08)" }}>
+                                          ยังไม่มีกลยุทธ์ในกลุ่มนี้
+                                        </Box>
+                                      )}
+                                    </Stack>
+                                  </Paper>
+                                );
+                              })}
+                            </Box>
+
+                            <Paper
+                              sx={{
+                                overflow: "hidden",
+                                borderRadius: "14px",
+                                backgroundColor: "rgba(8, 12, 20, 0.38)",
+                                border: "1px solid rgba(255,255,255,0.055)",
+                              }}
+                            >
+                              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, p: 1.2, borderBottom: "1px solid rgba(255,255,255,0.055)", flexWrap: "wrap" }}>
+                                <Box>
+                                  <Typography sx={{ fontSize: "0.9rem", fontWeight: 900, color: "text.primary", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+                                    Advanced Table
+                                  </Typography>
+                                  <Typography sx={{ fontSize: "0.84rem", color: "text.secondary", mt: 0.25 }}>
+                                    กดที่แถวเพื่อดูรายละเอียดก่อนเลือกใช้จริง
+                                  </Typography>
+                                </Box>
+                                <Chip
+                                  label={`${advancedStrategies.length} strategies`}
+                                  size="small"
+                                  sx={{ height: 26, fontSize: "0.72rem", fontWeight: 800, color: "text.secondary", backgroundColor: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.06)" }}
+                                />
+                              </Box>
+
+                              <Box sx={{ overflowX: "auto" }}>
+                                <Box sx={{ minWidth: 960 }}>
+                                  <Box
+                                    sx={{
+                                      display: "grid",
+                                      gridTemplateColumns: "minmax(280px, 1.35fr) 130px 128px 130px minmax(210px, 1fr) 86px",
+                                      gap: 1,
+                                      px: 1.2,
+                                      py: 0.9,
+                                      color: "text.secondary",
+                                      fontSize: "0.78rem",
+                                      fontWeight: 900,
+                                      textTransform: "uppercase",
+                                      letterSpacing: "0.04em",
+                                      borderBottom: "1px solid rgba(255,255,255,0.045)",
+                                    }}
+                                  >
+                                    <Box>Strategy</Box>
+                                    <Box>Market</Box>
+                                    <Box>Risk</Box>
+                                    <Box>AI Gate</Box>
+                                    <Box>Indicators</Box>
+                                    <Box sx={{ textAlign: "right" }}>Action</Box>
+                                  </Box>
+
+                                  {advancedStrategies.map((strat) => {
+                                    const isActive = (botConfig.strategy || "multi_indicator") === strat.id;
+                                    const isSelected = selectedStrategyDetail?.id === strat.id;
+                                    const risk = riskColors[strat.risk_level] || riskColors.medium;
+                                    const group = getStrategyGroup(strat);
+                                    return (
+                                      <Box
+                                        key={strat.id}
+                                        onClick={() => setSelectedStrategyDetailId(strat.id)}
+                                        sx={{
+                                          display: "grid",
+                                          gridTemplateColumns: "minmax(280px, 1.35fr) 130px 128px 130px minmax(210px, 1fr) 86px",
+                                          gap: 1,
+                                          alignItems: "center",
+                                          px: 1.2,
+                                          py: 1.05,
+                                          cursor: "pointer",
+                                          backgroundColor: isActive ? "rgba(0, 193, 106, 0.045)" : isSelected ? "rgba(96, 165, 250, 0.045)" : "transparent",
+                                          borderBottom: "1px solid rgba(255,255,255,0.035)",
+                                          boxShadow: isActive ? "inset 3px 0 0 rgba(0, 193, 106, 0.78)" : isSelected ? "inset 3px 0 0 rgba(96, 165, 250, 0.68)" : "none",
+                                          "&:hover": { backgroundColor: isActive ? "rgba(0, 193, 106, 0.065)" : "rgba(96,165,250,0.055)" },
+                                        }}
+                                      >
+                                        <Box sx={{ minWidth: 0 }}>
+                                          <Typography sx={{ fontSize: "0.94rem", fontWeight: 850, color: isActive ? "primary.main" : "text.primary", lineHeight: 1.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                            {strat.name}
+                                          </Typography>
+                                          <Typography sx={{ fontSize: "0.8rem", color: "text.secondary", mt: 0.25, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                            {strat.description}
+                                          </Typography>
+                                        </Box>
+                                        <Chip label={group.shortLabel} size="small" sx={{ justifySelf: "start", height: 25, fontSize: "0.72rem", fontWeight: 800, color: group.color, backgroundColor: `${group.color}10`, border: `1px solid ${group.color}28` }} />
+                                        <Chip label={risk.label} size="small" sx={{ justifySelf: "start", height: 25, fontSize: "0.72rem", fontWeight: 800, color: risk.color, backgroundColor: `${risk.color}10`, border: `1px solid ${risk.color}28` }} />
+                                        <Typography sx={{ fontSize: "0.86rem", color: "text.primary", fontWeight: 750 }}>
+                                          {strat.ai_min_score ?? botConfig.ai_min_score} / {strat.ai_min_confidence ?? botConfig.ai_min_confidence}
+                                        </Typography>
+                                        <Typography sx={{ fontSize: "0.8rem", color: "text.secondary", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                                          {strat.indicators.slice(0, 4).join(" · ")}
+                                        </Typography>
+                                        <Button
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            applyStrategy(strat);
+                                          }}
+                                          disabled={isActive}
+                                          size="small"
+                                          variant={isActive ? "contained" : "outlined"}
+                                          sx={{
+                                            justifySelf: "end",
+                                            minWidth: 64,
+                                            height: 30,
+                                            px: 1,
+                                            borderRadius: "8px",
+                                            fontSize: "0.72rem",
+                                            fontWeight: 850,
+                                            textTransform: "none",
+                                            borderColor: "rgba(255,255,255,0.1)",
+                                          }}
+                                        >
+                                          {isActive ? "ใช้อยู่" : "เลือก"}
+                                        </Button>
+                                      </Box>
+                                    );
+                                  })}
+                                </Box>
+                              </Box>
+                            </Paper>
+
+                            {selectedStrategyDetail && (
+                              <Paper
+                                sx={{
+                                  p: { xs: 1.35, sm: 1.6 },
+                                  borderRadius: "14px",
+                                  backgroundColor: "rgba(8, 12, 20, 0.42)",
+                                  border: `1px solid ${selectedStrategyDetailGroup.color}28`,
+                                }}
+                              >
+                                <Stack spacing={1.25}>
+                                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 1.2, flexWrap: "wrap" }}>
+                                    <Box sx={{ minWidth: 0, flex: "1 1 360px" }}>
+                                      <Typography sx={{ fontSize: "0.82rem", fontWeight: 900, color: selectedStrategyDetailGroup.color, textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                        Strategy Detail
                                       </Typography>
-                                      <Typography sx={{ fontSize: "0.68rem", color: "text.secondary" }}>
-                                        {group.hint}
+                                      <Typography sx={{ fontSize: "1.08rem", fontWeight: 900, color: "text.primary", mt: 0.35, lineHeight: 1.25 }}>
+                                        {selectedStrategyDetail.name}
+                                      </Typography>
+                                      <Typography sx={{ fontSize: "0.9rem", color: "text.secondary", mt: 0.45, lineHeight: 1.55 }}>
+                                        {selectedStrategyDetail.description}
+                                      </Typography>
+                                    </Box>
+
+                                    <Stack direction="row" spacing={0.55} sx={{ flexWrap: "wrap", justifyContent: "flex-end" }}>
+                                      <Chip label={selectedStrategyDetailGroup.shortLabel} size="small" sx={{ height: 26, fontSize: "0.72rem", fontWeight: 850, color: selectedStrategyDetailGroup.color, backgroundColor: `${selectedStrategyDetailGroup.color}10`, border: `1px solid ${selectedStrategyDetailGroup.color}2c` }} />
+                                      <Chip label={selectedStrategyDetailRisk.label} size="small" sx={{ height: 26, fontSize: "0.72rem", fontWeight: 850, color: selectedStrategyDetailRisk.color, backgroundColor: `${selectedStrategyDetailRisk.color}12`, border: `1px solid ${selectedStrategyDetailRisk.color}2c` }} />
+                                      {(botConfig.strategy || "multi_indicator") === selectedStrategyDetail.id && (
+                                        <Chip label="ACTIVE" color="primary" size="small" sx={{ height: 26, fontSize: "0.72rem", fontWeight: 850 }} />
+                                      )}
+                                    </Stack>
+                                  </Box>
+
+                                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" }, gap: 0.9 }}>
+                                    <Box sx={{ p: 1.05, borderRadius: "10px", backgroundColor: "rgba(255,255,255,0.018)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                                      <Typography sx={{ fontSize: "0.76rem", color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 850 }}>
+                                        AI Gate
+                                      </Typography>
+                                      <Typography sx={{ fontSize: "0.95rem", color: "text.primary", mt: 0.35, fontWeight: 800 }}>
+                                        Score {selectedStrategyDetail.ai_min_score ?? botConfig.ai_min_score} / Confidence {selectedStrategyDetail.ai_min_confidence ?? botConfig.ai_min_confidence}
+                                      </Typography>
+                                    </Box>
+                                    <Box sx={{ p: 1.05, borderRadius: "10px", backgroundColor: "rgba(255,255,255,0.018)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                                      <Typography sx={{ fontSize: "0.76rem", color: "text.secondary", textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 850 }}>
+                                        Indicators
+                                      </Typography>
+                                      <Typography sx={{ fontSize: "0.95rem", color: "text.primary", mt: 0.35, fontWeight: 800 }}>
+                                        {selectedStrategyDetail.indicators.length} ตัว
                                       </Typography>
                                     </Box>
                                   </Box>
-                                  <Stack spacing={0.8}>
-                                    {groupStrats.map((strat) => {
-                                      const isActive = (botConfig.strategy || "multi_indicator") === strat.id;
-                              const riskColors: Record<string, { color: string; label: string }> = {
-                                low: { color: "#00c16a", label: "เสี่ยงต่ำ" },
-                                medium: { color: "#fbbf24", label: "เสี่ยงปานกลาง" },
-                                high: { color: "#ef5b63", label: "เสี่ยงสูง" },
-                              };
-                              const risk = riskColors[strat.risk_level] || riskColors.medium;
 
-                              return (
-                                <Paper
-                                  key={strat.id}
-                                  onClick={() => {
-                                    const patch: Partial<BotConfig> = { strategy: strat.id };
-                                    // ใช้เกณฑ์ AI Gate ที่กลยุทธ์แนะนำเป็นพิเศษก่อน (เช่น counter-trend ที่ต้องผ่อนเกณฑ์)
-                                    if (typeof strat.ai_min_score === "number") {
-                                      patch.ai_min_score = strat.ai_min_score;
-                                      patch.ai_min_confidence = strat.ai_min_confidence ?? 0.5;
-                                    } else if (strat.risk_level === "low") {
-                                      patch.ai_min_score = 75;
-                                      patch.ai_min_confidence = 0.65;
-                                    } else if (strat.risk_level === "medium") {
-                                      patch.ai_min_score = 65;
-                                      patch.ai_min_confidence = 0.55;
-                                    } else if (strat.risk_level === "high") {
-                                      patch.ai_min_score = 50;
-                                      patch.ai_min_confidence = 0.45;
-                                    }
-                                    updateBotConfigDraft(patch);
-                                  }}
-                                  sx={{
-                                    p: 1.5,
-                                    borderRadius: "12px",
-                                    cursor: "pointer",
-                                    backgroundColor: isActive ? "rgba(0, 193, 106, 0.03)" : "rgba(13, 20, 35, 0.3)",
-                                    border: isActive ? "1.5px solid rgba(0, 193, 106, 0.4)" : "1.5px solid rgba(255, 255, 255, 0.03)",
-                                    boxShadow: isActive ? "0 0 15px rgba(0, 193, 106, 0.05)" : "none",
-                                    transition: "all 0.2s ease",
-                                    "&:hover": {
-                                      borderColor: isActive ? "rgba(0, 193, 106, 0.6)" : "rgba(255, 255, 255, 0.1)",
-                                      backgroundColor: isActive ? "rgba(0, 193, 106, 0.05)" : "rgba(255, 255, 255, 0.015)",
-                                    },
-                                  }}
-                                >
-                                  <Stack spacing={0.8}>
-                                    {/* Header row */}
-                                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 0.5 }}>
-                                      <Typography sx={{ fontWeight: 600, fontSize: "0.88rem", color: isActive ? "primary.main" : "text.primary" }}>
-                                        {strat.name}
-                                      </Typography>
-                                      <Stack direction="row" spacing={0.5} sx={{ flexShrink: 0 }}>
-                                        <Chip
-                                          label={risk.label}
-                                          size="small"
-                                          sx={{
-                                            height: 18,
-                                            fontSize: "9px",
-                                            fontWeight: 600,
-                                            backgroundColor: `${risk.color}10`,
-                                            color: risk.color,
-                                            border: `1px solid ${risk.color}30`,
-                                          }}
-                                        />
-                                        {isActive && (
-                                          <Chip
-                                            label="ACTIVE"
-                                            color="primary"
-                                            size="small"
-                                            sx={{ height: 18, fontSize: "9px", fontWeight: 600 }}
-                                          />
-                                        )}
-                                      </Stack>
-                                    </Box>
-
-                                    {/* Description */}
-                                    <Typography sx={{ fontSize: "0.78rem", color: "text.secondary", lineHeight: 1.45 }}>
-                                      {strat.description}
-                                    </Typography>
-
-                                    {/* Indicators - compact inline */}
-                                    <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.4 }}>
-                                      {strat.indicators.map((ind) => (
-                                        <Chip
-                                          key={ind}
-                                          label={ind}
-                                          size="small"
-                                          sx={{
-                                            height: 18,
-                                            fontSize: "0.65rem",
-                                            fontWeight: 500,
-                                            backgroundColor: "rgba(255, 255, 255, 0.02)",
-                                            color: "text.secondary",
-                                            border: "1px solid rgba(255, 255, 255, 0.05)",
-                                            borderRadius: "5px",
-                                          }}
-                                        />
-                                      ))}
-                                    </Box>
-
-                                    {/* Buy/Sell Logic - only show for active strategy */}
-                                    {isActive && (
-                                      <Box
+                                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.5 }}>
+                                    {selectedStrategyDetail.indicators.map((ind) => (
+                                      <Chip
+                                        key={ind}
+                                        label={ind}
+                                        size="small"
                                         sx={{
-                                          display: "grid",
-                                          gridTemplateColumns: { xs: "1fr", sm: "1fr 1fr" },
-                                          gap: 0.8,
-                                          mt: 0.3,
+                                          height: 24,
+                                          fontSize: "0.72rem",
+                                          fontWeight: 700,
+                                          backgroundColor: "rgba(255, 255, 255, 0.025)",
+                                          color: "text.secondary",
+                                          border: "1px solid rgba(255, 255, 255, 0.06)",
+                                          borderRadius: "7px",
                                         }}
-                                      >
-                                        <Box
-                                          sx={{
-                                            p: 1,
-                                            borderRadius: "8px",
-                                            backgroundColor: "rgba(0, 193, 106, 0.02)",
-                                            border: "1px solid rgba(0, 193, 106, 0.06)",
-                                          }}
-                                        >
-                                          <Typography sx={{ fontSize: "0.68rem", fontWeight: 600, color: "#00c16a", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.2 }}>
-                                            🟢 ซื้อ
-                                          </Typography>
-                                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", lineHeight: 1.35 }}>
-                                            {strat.buy_logic}
-                                          </Typography>
-                                        </Box>
-                                        <Box
-                                          sx={{
-                                            p: 1,
-                                            borderRadius: "8px",
-                                            backgroundColor: "rgba(239, 91, 99, 0.02)",
-                                            border: "1px solid rgba(239, 91, 99, 0.06)",
-                                          }}
-                                        >
-                                          <Typography sx={{ fontSize: "0.68rem", fontWeight: 600, color: "#ef5b63", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.2 }}>
-                                            🔴 ขาย
-                                          </Typography>
-                                          <Typography sx={{ fontSize: "0.72rem", color: "text.secondary", lineHeight: 1.35 }}>
-                                            {strat.sell_logic}
-                                          </Typography>
-                                        </Box>
-                                      </Box>
-                                    )}
-                                  </Stack>
-                                </Paper>
-                              );
-                                    })}
-                                  </Stack>
-                                </Box>
-                              );
-                            })}
+                                      />
+                                    ))}
+                                  </Box>
+
+                                  <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 1 }}>
+                                    <Box sx={{ p: 1.2, borderRadius: "11px", backgroundColor: "rgba(0, 193, 106, 0.025)", border: "1px solid rgba(0, 193, 106, 0.09)" }}>
+                                      <Typography sx={{ fontSize: "0.78rem", fontWeight: 900, color: "#00c16a", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.4 }}>
+                                        ซื้อเมื่อ
+                                      </Typography>
+                                      <Typography sx={{ fontSize: "0.9rem", color: "text.secondary", lineHeight: 1.55 }}>
+                                        {selectedStrategyDetail.buy_logic}
+                                      </Typography>
+                                    </Box>
+                                    <Box sx={{ p: 1.2, borderRadius: "11px", backgroundColor: "rgba(239, 91, 99, 0.025)", border: "1px solid rgba(239, 91, 99, 0.09)" }}>
+                                      <Typography sx={{ fontSize: "0.78rem", fontWeight: 900, color: "#ef5b63", textTransform: "uppercase", letterSpacing: "0.05em", mb: 0.4 }}>
+                                        ขายเมื่อ
+                                      </Typography>
+                                      <Typography sx={{ fontSize: "0.9rem", color: "text.secondary", lineHeight: 1.55 }}>
+                                        {selectedStrategyDetail.sell_logic}
+                                      </Typography>
+                                    </Box>
+                                  </Box>
+
+                                  <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                                    <Button
+                                      onClick={() => applyStrategy(selectedStrategyDetail)}
+                                      disabled={(botConfig.strategy || "multi_indicator") === selectedStrategyDetail.id}
+                                      variant="contained"
+                                      size="small"
+                                      sx={{ height: 34, px: 2, borderRadius: "9px", fontSize: "0.82rem", fontWeight: 900, textTransform: "none" }}
+                                    >
+                                      {(botConfig.strategy || "multi_indicator") === selectedStrategyDetail.id ? "กำลังใช้งานอยู่" : "ใช้กลยุทธ์นี้"}
+                                    </Button>
+                                  </Box>
+                                </Stack>
+                              </Paper>
+                            )}
                           </Stack>
                         )}
 
@@ -1214,10 +1429,14 @@ export function SettingsView({
                               mb: 0.5,
                             }}
                           >
-                            ลิสต์เป้าหมายสแกน ({botConfig.symbols?.length || 0} เหรียญ)
+                            {(botConfig.market_universe_mode || "fixed") === "top_gainers"
+                              ? `ลิสต์สำรอง / Fixed Markets (${botConfig.symbols?.length || 0} เหรียญ)`
+                              : `ลิสต์เป้าหมายสแกน (${botConfig.symbols?.length || 0} เหรียญ)`}
                           </Typography>
                           <Typography sx={{ fontSize: "0.82rem", color: "text.secondary" }}>
-                            บอทจะคำนวณสัญญาณทางเทคนิคและสแกนเฉพาะเหรียญที่กำหนดไว้ในรายการนี้เท่านั้น
+                            {(botConfig.market_universe_mode || "fixed") === "top_gainers"
+                              ? "ตอนเปิด Top Gainers บอทจะดึงเหรียญ % เพิ่มสูงสุดเป็นหลัก รายการนี้ยังเก็บไว้เป็นโหมด fixed/fallback"
+                              : "บอทจะคำนวณสัญญาณทางเทคนิคและสแกนเฉพาะเหรียญที่กำหนดไว้ในรายการนี้เท่านั้น"}
                           </Typography>
                         </Box>
                         <Button
@@ -1240,9 +1459,155 @@ export function SettingsView({
                         </Button>
                       </Box>
 
+                      <Paper
+                        sx={{
+                          p: 1.4,
+                          borderRadius: "14px",
+                          backgroundColor: "rgba(8, 12, 20, 0.38)",
+                          border: "1px solid rgba(255,255,255,0.055)",
+                        }}
+                      >
+                        <Stack spacing={1.1}>
+                          <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, flexWrap: "wrap", alignItems: "flex-start" }}>
+                            <Box sx={{ minWidth: 0 }}>
+                              <Typography sx={{ fontSize: "0.9rem", fontWeight: 800, color: "text.primary" }}>
+                                Market Universe Mode
+                              </Typography>
+                              <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", mt: 0.25, lineHeight: 1.45 }}>
+                                เลือกว่าจะให้บอทสแกนจากลิสต์ fixed ด้านล่าง หรือดึง Top Gainers จาก Bitkub อัตโนมัติ
+                              </Typography>
+                            </Box>
+                            <Chip
+                              label={(botConfig.market_universe_mode || "fixed") === "top_gainers" ? "Dynamic Top Gainers" : "Fixed Markets"}
+                              size="small"
+                              sx={{
+                                height: 26,
+                                fontSize: "0.72rem",
+                                fontWeight: 800,
+                                color: (botConfig.market_universe_mode || "fixed") === "top_gainers" ? "#fbbf24" : "#00c16a",
+                                backgroundColor: (botConfig.market_universe_mode || "fixed") === "top_gainers" ? "rgba(251,191,36,0.1)" : "rgba(0,193,106,0.1)",
+                                border: (botConfig.market_universe_mode || "fixed") === "top_gainers" ? "1px solid rgba(251,191,36,0.25)" : "1px solid rgba(0,193,106,0.25)",
+                              }}
+                            />
+                          </Box>
+
+                          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", md: "1fr 1fr" }, gap: 1 }}>
+                            {[
+                              {
+                                mode: "fixed" as const,
+                                title: "ใช้ Markets List",
+                                desc: "บอทสแกนเฉพาะเหรียญที่เลือกไว้ด้านล่าง เหมาะกับการคุมความเสี่ยงและเหรียญที่รู้จัก",
+                                color: "#00c16a",
+                              },
+                              {
+                                mode: "top_gainers" as const,
+                                title: "Top 20 % เพิ่มสูงสุด",
+                                desc: "บอทดึงเหรียญที่ % ขึ้นสูงสุดจากตลาด Bitkub ก่อนสแกน เหมาะกับ momentum แต่เสี่ยงไล่ราคา",
+                                color: "#fbbf24",
+                              },
+                            ].map((option) => {
+                              const active = (botConfig.market_universe_mode || "fixed") === option.mode;
+                              return (
+                                <Box
+                                  key={option.mode}
+                                  onClick={() => updateBotConfigDraft({ market_universe_mode: option.mode, top_gainers_limit: option.mode === "top_gainers" ? 20 : botConfig.top_gainers_limit })}
+                                  sx={{
+                                    p: 1.2,
+                                    borderRadius: "11px",
+                                    cursor: "pointer",
+                                    backgroundColor: active ? `${option.color}0d` : "rgba(255,255,255,0.018)",
+                                    border: active ? `1px solid ${option.color}55` : "1px solid rgba(255,255,255,0.055)",
+                                    boxShadow: active ? `inset 3px 0 0 ${option.color}` : "none",
+                                    transition: "all 0.2s ease",
+                                    "&:hover": { borderColor: `${option.color}55`, backgroundColor: `${option.color}08` },
+                                  }}
+                                >
+                                  <Typography sx={{ fontSize: "0.9rem", fontWeight: 850, color: active ? option.color : "text.primary" }}>
+                                    {option.title}
+                                  </Typography>
+                                  <Typography sx={{ fontSize: "0.8rem", color: "text.secondary", mt: 0.35, lineHeight: 1.45 }}>
+                                    {option.desc}
+                                  </Typography>
+                                </Box>
+                              );
+                            })}
+                          </Box>
+
+                          {(botConfig.market_universe_mode || "fixed") === "top_gainers" && (
+                            <Stack spacing={1}>
+                              <Alert
+                                severity="warning"
+                                icon={<AlertTriangle size={16} />}
+                                sx={{
+                                  borderRadius: "12px",
+                                  backgroundColor: "rgba(251,191,36,0.035)",
+                                  border: "1px solid rgba(251,191,36,0.12)",
+                                  color: "text.secondary",
+                                  fontSize: "0.82rem",
+                                  "& .MuiAlert-icon": { color: "#fbbf24" },
+                                }}
+                              >
+                                โหมดนี้จะใช้ Top {botConfig.top_gainers_limit ?? 20} เหรียญเป็น universe หลักแทนลิสต์ด้านล่าง แต่จะรวมเหรียญที่มี position เปิดอยู่เสมอเพื่อให้สัญญาณขายยังทำงาน
+                              </Alert>
+
+                              <Box
+                                sx={{
+                                  p: 1.15,
+                                  borderRadius: "12px",
+                                  backgroundColor: "rgba(251,191,36,0.025)",
+                                  border: "1px solid rgba(251,191,36,0.1)",
+                                }}
+                              >
+                                <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, flexWrap: "wrap", mb: 0.8 }}>
+                                  <Box>
+                                    <Typography sx={{ fontSize: "0.86rem", fontWeight: 850, color: "#fbbf24" }}>
+                                      Preview: Top Gainers ตอนนี้
+                                    </Typography>
+                                    <Typography sx={{ fontSize: "0.76rem", color: "text.secondary", mt: 0.2 }}>
+                                      รายการนี้เป็น dynamic universe ที่บอทจะดึงใหม่ตอนสแกน ไม่ใช่ tag fixed list ด้านล่าง
+                                    </Typography>
+                                  </Box>
+                                  <Chip
+                                    label={`${topGainerPreview.length}/${botConfig.top_gainers_limit ?? 20}`}
+                                    size="small"
+                                    sx={{ height: 22, fontSize: "0.68rem", fontWeight: 800, color: "#fbbf24", backgroundColor: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.18)" }}
+                                  />
+                                </Box>
+
+                                {topGainerPreview.length === 0 ? (
+                                  <Typography sx={{ fontSize: "0.8rem", color: "text.secondary" }}>
+                                    ยังไม่มีข้อมูล ticker สำหรับ preview แต่ตอนบอทรันจะดึงจาก Bitkub อีกครั้ง
+                                  </Typography>
+                                ) : (
+                                  <Box sx={{ display: "flex", flexWrap: "wrap", gap: 0.65 }}>
+                                    {topGainerPreview.map(([symbol, data], index) => (
+                                      <Chip
+                                        key={symbol}
+                                        label={`${index + 1}. ${symbol} +${Number(data.percentage || 0).toFixed(2)}%`}
+                                        size="small"
+                                        sx={{
+                                          height: 26,
+                                          fontSize: "0.72rem",
+                                          fontWeight: 750,
+                                          color: "#fbbf24",
+                                          backgroundColor: "rgba(251,191,36,0.07)",
+                                          border: "1px solid rgba(251,191,36,0.16)",
+                                          borderRadius: "8px",
+                                        }}
+                                      />
+                                    ))}
+                                  </Box>
+                                )}
+                              </Box>
+                            </Stack>
+                          )}
+                        </Stack>
+                      </Paper>
+
                       {/* Active Coins Section */}
                       <Box
                         sx={{
+                          position: "relative",
                           display: "flex",
                           flexWrap: "wrap",
                           gap: 1,
@@ -1254,6 +1619,23 @@ export function SettingsView({
                           alignContent: "flex-start",
                         }}
                       >
+                        {(botConfig.market_universe_mode || "fixed") === "top_gainers" && (
+                          <Chip
+                            label="Fixed list / fallback ไม่ใช่ Top 20"
+                            size="small"
+                            sx={{
+                              position: "absolute",
+                              top: -12,
+                              left: 14,
+                              height: 24,
+                              fontSize: "0.68rem",
+                              fontWeight: 850,
+                              color: "#94a3b8",
+                              backgroundColor: "#0d1321",
+                              border: "1px solid rgba(148,163,184,0.22)",
+                            }}
+                          />
+                        )}
                         {(!botConfig.symbols || botConfig.symbols.length === 0) ? (
                           <Typography sx={{ fontSize: "0.82rem", color: "text.secondary", m: "auto" }}>
                             ไม่มีเหรียญเปิดสแกนขณะนี้ กรุณาพิมพ์เพิ่มอย่างน้อย 1 คู่เหรียญ

@@ -67,6 +67,9 @@ DEFAULT_CONFIG = {
     "ai_min_confidence": 0.55,
     "ai_timeout_seconds": 8,
     "min_sell_value_thb": 10.0,
+    # Market universe — fixed = ใช้ลิสต์ symbols ด้านล่าง, top_gainers = ดึงเหรียญ % เพิ่มสูงสุดจาก Bitkub ก่อนสแกน
+    "market_universe_mode": "fixed",
+    "top_gainers_limit": 20,
     "symbols": [
         "BTC/THB", "ETH/THB", "SOL/THB", "NEAR/THB", "XRP/THB",
         "DOGE/THB", "ADA/THB", "SUI/THB", "OP/THB", "XLM/THB",
@@ -819,14 +822,16 @@ class BotRunner:
 
                 # หมายเหตุ: PnL + SL/Trailing/TP อัปเดตแบบ real-time โดย price_loop (เธรดแยก) แล้ว
                 # scan loop นี้โฟกัสที่สัญญาณจากแท่งเทียน (กลยุทธ์ซื้อ/ขาย) เท่านั้น
+                scan_symbols = self.get_scan_symbols()
 
                 # วนลูปเช็คสัญญาณแต่ละคู่เหรียญ
-                for symbol in self.config.get("symbols", []):
+                for symbol in scan_symbols:
                     if self.stop_event.is_set():
                         break
                         
                     # 1. ดึงกราฟเทคนิคและคำนวณอินดิเคเตอร์
-                    df = self.fetch_ohlcv(symbol, self.config["timeframe"])
+                    lookback_candles = int(getattr(active_strat, "LOOKBACK_CANDLES", 100))
+                    df = self.fetch_ohlcv(symbol, self.config["timeframe"], limit=lookback_candles)
                     if df.empty or len(df) < 30:
                         continue
                         
@@ -1407,6 +1412,66 @@ class BotRunner:
         if not item:
             return 0.0
         return float(item.get("highestBid") or item.get("bid") or item.get("last") or 0.0)
+
+    def get_scan_symbols(self):
+        fixed_symbols = [
+            str(sym).strip().upper()
+            for sym in self.config.get("symbols", [])
+            if str(sym).strip()
+        ]
+        mode = str(self.config.get("market_universe_mode", "fixed")).lower()
+
+        if mode != "top_gainers":
+            return fixed_symbols
+
+        try:
+            limit = max(1, min(50, int(self.config.get("top_gainers_limit", 20))))
+        except (TypeError, ValueError):
+            limit = 20
+
+        try:
+            r = bitkub_http.get("https://api.bitkub.com/api/market/ticker", timeout=8)
+            ticker_data = r.json()
+            candidates = []
+
+            for bitkub_symbol, item in ticker_data.items():
+                if not bitkub_symbol.startswith("THB_"):
+                    continue
+
+                base = bitkub_symbol.replace("THB_", "", 1)
+                standard_symbol = f"{base}/THB"
+                meta = self.get_symbol_scales(standard_symbol)
+                if meta.get("freeze_buy") or str(meta.get("status", "active")).lower() != "active":
+                    continue
+
+                try:
+                    percent_change = float(item.get("percentChange") or 0)
+                    quote_volume = float(item.get("quoteVolume") or 0)
+                    last_price = float(item.get("last") or 0)
+                except (TypeError, ValueError):
+                    continue
+
+                if percent_change <= 0 or quote_volume <= 0 or last_price <= 0:
+                    continue
+
+                candidates.append((standard_symbol, percent_change, quote_volume))
+
+            top_symbols = [
+                symbol
+                for symbol, _, _ in sorted(candidates, key=lambda row: (row[1], row[2]), reverse=True)[:limit]
+            ]
+
+            if not top_symbols:
+                self.add_log("Top gainers universe returned no symbols. Falling back to fixed Markets list.")
+                return fixed_symbols
+
+            # เหรียญที่ถืออยู่ต้องอยู่ใน scan list เสมอ เพื่อให้ strategy sell signal ยังทำงานแม้หลุดจาก top gainers
+            merged = list(dict.fromkeys(top_symbols + list(self.positions.keys())))
+            self.add_log(f"Dynamic universe: using top {len(top_symbols)} gainers for scan ({len(merged)} incl. open positions).")
+            return merged
+        except Exception as e:
+            self.add_log(f"Failed to build top gainers universe: {str(e)}. Falling back to fixed Markets list.")
+            return fixed_symbols
 
     def get_live_available_balance(self, asset):
         api_key = os.getenv("BITKUB_API_KEY")

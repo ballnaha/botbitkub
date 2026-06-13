@@ -1,7 +1,8 @@
 import { useState, useMemo } from "react";
-import { Box, Button, Card, CardContent, Chip, CircularProgress, Paper, Stack, Switch, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, TablePagination } from "@mui/material";
-import { Bot, Brain, History, Inbox, TrendingUp } from "lucide-react";
+import { Box, Button, Card, CardContent, Chip, CircularProgress, Paper, Stack, Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Typography, TablePagination } from "@mui/material";
+import { Brain, History, Inbox, TrendingUp } from "lucide-react";
 import type { AiWatchlistItem, BotConfig, HistoryItem, PositionItem } from "./dashboardTypes";
+import { BotOfficeAgentCard } from "./BotOfficeAgentCard";
 import { GeminiLogo, DeepSeekLogo } from "./Logos";
 
 type TradeHistoryRange = "7d" | "30d" | "month" | "year" | "all";
@@ -553,76 +554,18 @@ export function BotTradeView({ botConfig, positions, history, aiWatchlist, handl
 
   return (
     <Stack spacing={1.25} sx={{ width: "100%", minWidth: 0 }}>
-      {/* Bot Operations Header */}
-      <Card
-        sx={{
-          border: botConfig.is_running
-            ? "1px solid rgba(0, 193, 106, 0.25)"
-            : "1px solid rgba(255, 255, 255, 0.04)",
-          boxShadow: botConfig.is_running
-            ? "0 4px 20px rgba(0, 193, 106, 0.06)"
-            : "0 4px 20px rgba(0, 0, 0, 0.3)",
-          transition: "all 0.3s ease"
-        }}
-      >
-        <CardContent sx={{ p: { xs: 1.5, sm: 2 } }}>
-          <Box sx={{ display: "grid", gridTemplateColumns: { xs: "1fr", lg: "minmax(260px, 1.3fr) minmax(0, 3fr) auto" }, gap: 1.25, alignItems: "center" }}>
-            <Box sx={{ display: "flex", alignItems: "center", gap: 1.2, minWidth: 0 }}>
-              <Box sx={{ width: 42, height: 42, borderRadius: "12px", display: "grid", placeItems: "center", color: botConfig.is_running ? "#00c16a" : "#94a3b8", backgroundColor: botConfig.is_running ? "rgba(0, 193, 106, 0.1)" : "rgba(148, 163, 184, 0.08)", border: botConfig.is_running ? "1px solid rgba(0, 193, 106, 0.2)" : "1px solid rgba(148, 163, 184, 0.14)", flexShrink: 0 }}>
-                <Bot size={20} />
-              </Box>
-              <Box sx={{ minWidth: 0 }}>
-                <Typography sx={{ fontWeight: 700, fontSize: { xs: "0.96rem", sm: "1.04rem" }, color: "text.primary", fontFamily: "Outfit, sans-serif" }}>
-                  บอทเทรดอัตโนมัติ
-                </Typography>
-                <Stack direction="row" spacing={0.65} sx={{ mt: 0.55, alignItems: "center", flexWrap: "wrap", gap: 0.65 }}>
-                  <Chip size="small" label={botConfig.is_running ? "RUNNING" : "STOPPED"} sx={{ height: 20, fontSize: "10px", fontWeight: 800, color: botConfig.is_running ? "#00c16a" : "text.secondary", backgroundColor: botConfig.is_running ? "rgba(0, 193, 106, 0.1)" : "rgba(255,255,255,0.035)", border: botConfig.is_running ? "1px solid rgba(0, 193, 106, 0.2)" : "1px solid rgba(255,255,255,0.06)" }} />
-                  <Chip size="small" label={botConfig.dry_run ? "DRY-RUN" : "LIVE"} sx={{ height: 20, fontSize: "10px", fontWeight: 800, color: botConfig.dry_run ? "#94a3b8" : "#00c16a", backgroundColor: botConfig.dry_run ? "rgba(148, 163, 184, 0.08)" : "rgba(0, 193, 106, 0.1)", border: botConfig.dry_run ? "1px solid rgba(148, 163, 184, 0.14)" : "1px solid rgba(0, 193, 106, 0.2)" }} />
-                  <Chip size="small" label={riskLabel} sx={{ height: 20, fontSize: "10px", fontWeight: 700, color: riskColor, backgroundColor: riskBg, border: `1px solid ${riskColor}24` }} />
-                </Stack>
-              </Box>
-            </Box>
-
-            <Box sx={{ display: "grid", gridTemplateColumns: { xs: "repeat(2, minmax(0, 1fr))", md: "repeat(3, minmax(0, 1fr))", xl: "repeat(6, minmax(0, 1fr))" }, gap: 0.75 }}>
-              {operationStats.map((item) => (
-                <Box key={item.label} sx={{ minHeight: 54, p: 1, borderRadius: "10px", backgroundColor: "rgba(2, 6, 23, 0.36)", border: "1px solid rgba(255, 255, 255, 0.045)", minWidth: 0 }}>
-                  <Typography sx={{ color: "text.secondary", fontSize: "0.68rem", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em", lineHeight: 1.1 }}>
-                    {item.label}
-                  </Typography>
-                  <Typography sx={{ mt: 0.55, color: item.color, fontSize: "0.82rem", fontWeight: 700, fontFamily: "Outfit, monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                    {item.value}
-                  </Typography>
-                </Box>
-              ))}
-            </Box>
-
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: { xs: "space-between", lg: "flex-end" }, gap: 1 }}>
-              <Button
-                variant="outlined"
-                onClick={() => setActiveView && setActiveView("settings")}
-                sx={{
-                  height: 38,
-                  px: 1.5,
-                  fontSize: "0.78rem",
-                  fontWeight: 700,
-                  borderColor: "rgba(255, 255, 255, 0.08)",
-                  color: "text.primary",
-                  borderRadius: "10px",
-                  textTransform: "none",
-                  whiteSpace: "nowrap",
-                  "&:hover": {
-                    borderColor: "rgba(255, 255, 255, 0.2)",
-                    backgroundColor: "rgba(255, 255, 255, 0.03)",
-                  }
-                }}
-              >
-                Settings
-              </Button>
-              <Switch checked={botConfig.is_running} onChange={handleBotToggle} color="primary" />
-            </Box>
-          </Box>
-        </CardContent>
-      </Card>
+      <BotOfficeAgentCard
+        botConfig={botConfig}
+        positions={positions}
+        history={history}
+        aiWatchlist={aiWatchlist}
+        riskLabel={riskLabel}
+        riskColor={riskColor}
+        riskBg={riskBg}
+        operationStats={operationStats}
+        handleBotToggle={handleBotToggle}
+        setActiveView={setActiveView}
+      />
 
       {/* Operations Data */}
       <Stack spacing={1.25} sx={{ minWidth: 0 }}>

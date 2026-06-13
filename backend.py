@@ -622,6 +622,8 @@ class BotToggleRequest(BaseModel):
     max_open_trades: int = None
     max_budget_thb: float = None
     symbols: list[str] = None
+    market_universe_mode: str = None
+    top_gainers_limit: int = None
     strategy: str = None
     ai_enabled: bool = None
     ai_provider: str = None
@@ -662,6 +664,8 @@ async def get_bot_status():
         "trade_direction": bot.config.get("trade_direction", "long"),
         "leverage": bot.config.get("leverage", 1),
         "symbols": bot.config.get("symbols", []),
+        "market_universe_mode": bot.config.get("market_universe_mode", "fixed"),
+        "top_gainers_limit": bot.config.get("top_gainers_limit", 20),
         "timeframe": bot.config.get("timeframe", "15"),
         "strategy": bot.config.get("strategy", "multi_indicator"),
         "ai_enabled": bot.config.get("ai_enabled", False),
@@ -746,6 +750,11 @@ async def save_bot_config(config_req: BotToggleRequest):
         bot.config["max_budget_thb"] = max(0.0, config_req.max_budget_thb)
     if config_req.symbols is not None:
         bot.config["symbols"] = [sym.strip().upper() for sym in config_req.symbols if sym]
+    if config_req.market_universe_mode is not None:
+        mode = config_req.market_universe_mode.strip().lower()
+        bot.config["market_universe_mode"] = "top_gainers" if mode == "top_gainers" else "fixed"
+    if config_req.top_gainers_limit is not None:
+        bot.config["top_gainers_limit"] = max(1, min(50, config_req.top_gainers_limit))
     if config_req.strategy is not None:
         bot.config["strategy"] = config_req.strategy
     if config_req.ai_enabled is not None:

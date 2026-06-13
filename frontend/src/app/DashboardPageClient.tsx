@@ -226,6 +226,8 @@ export default function DashboardPageClient() {
     trade_direction: "long",
     leverage: 1,
     symbols: [] as string[],
+    market_universe_mode: "fixed",
+    top_gainers_limit: 20,
     timeframe: "15",
     strategy: "multi_indicator",
     ai_enabled: false,
@@ -503,6 +505,8 @@ export default function DashboardPageClient() {
           max_budget_thb: data.max_budget_thb ?? 5000.0,
           trade_direction: data.trade_direction || "long",
           leverage: data.leverage ?? 1,
+          market_universe_mode: data.market_universe_mode === "top_gainers" ? "top_gainers" : "fixed",
+          top_gainers_limit: data.top_gainers_limit ?? 20,
           strategy: data.strategy || "multi_indicator",
           ai_enabled: data.ai_enabled === true,
           ai_provider: data.ai_provider || "gemini",
@@ -787,6 +791,8 @@ export default function DashboardPageClient() {
           max_open_trades: Number(configToSave.max_open_trades),
           max_budget_thb: Number(configToSave.max_budget_thb),
           symbols: configToSave.symbols,
+          market_universe_mode: configToSave.market_universe_mode || "fixed",
+          top_gainers_limit: Number(configToSave.top_gainers_limit ?? 20),
           strategy: configToSave.strategy,
           ai_enabled: configToSave.ai_enabled,
           ai_provider: configToSave.ai_provider,
@@ -835,6 +841,8 @@ export default function DashboardPageClient() {
           (configToSave.regime_filter_enabled ?? true) === (latestConfig.regime_filter_enabled ?? true) &&
           (configToSave.regime_action || "block") === (latestConfig.regime_action || "block") &&
           Number(configToSave.regime_reduce_factor ?? 0.5) === Number(latestConfig.regime_reduce_factor ?? 0.5) &&
+          (configToSave.market_universe_mode || "fixed") === (latestConfig.market_universe_mode || "fixed") &&
+          Number(configToSave.top_gainers_limit ?? 20) === Number(latestConfig.top_gainers_limit ?? 20) &&
           JSON.stringify(configToSave.symbols || []) === JSON.stringify(latestConfig.symbols || []);
 
         if (savedStillMatchesLatest) {
@@ -854,6 +862,8 @@ export default function DashboardPageClient() {
             trade_direction: data.config.trade_direction || prev.trade_direction,
             leverage: data.config.leverage ?? prev.leverage,
             symbols: data.config.symbols || prev.symbols,
+            market_universe_mode: data.config.market_universe_mode === "top_gainers" ? "top_gainers" : "fixed",
+            top_gainers_limit: data.config.top_gainers_limit ?? prev.top_gainers_limit,
             timeframe: data.config.timeframe || prev.timeframe,
             strategy: data.config.strategy || prev.strategy,
             ai_enabled: data.config.ai_enabled === true,
@@ -943,6 +953,8 @@ export default function DashboardPageClient() {
     botConfig.max_budget_thb,
     botConfig.strategy,
     botConfig.symbols,
+    botConfig.market_universe_mode,
+    botConfig.top_gainers_limit,
     botConfig.ai_enabled,
     botConfig.ai_provider,
     botConfig.ai_model,
@@ -1764,6 +1776,7 @@ export default function DashboardPageClient() {
             actionLoading={dataLoading}
             autoSaveState={settingsSaveState}
             allSymbols={tradeSymbolOptions}
+            tickers={tickers}
             onSaveConfig={() => {
               const configSnapshot = latestBotConfigRef.current;
               handleSaveBotSettings(configSnapshot, { silent: true }).then(() => {
