@@ -84,6 +84,7 @@ interface TickerData {
 }
 
 type DashboardView = "bot" | "manual" | "wallet" | "settings";
+type PreloadableComponent = { preload?: () => void };
 
 const DEFAULT_TRADE_SYMBOL_OPTIONS = ["BTC/THB", "ETH/THB", "KUB/THB", "XRP/THB", "USDT/THB"];
 const DASHBOARD_ROUTES: Record<DashboardView, string> = {
@@ -208,6 +209,8 @@ export default function DashboardPageClient() {
   const router = useRouter();
   const pathname = usePathname();
   const { addToast } = useToast();
+  const routeView = useMemo(() => getDashboardView(pathname), [pathname]);
+  const [optimisticView, setOptimisticView] = useState<DashboardView>(routeView);
 
   // ----------------------------------------------------
   // States
@@ -250,11 +253,41 @@ export default function DashboardPageClient() {
   const [tickers, setTickers] = useState<Record<string, TickerData>>({});
   const tickersRef = useRef<Record<string, TickerData>>({});
   const [tradeSymbolOptions, setTradeSymbolOptions] = useState<string[]>(DEFAULT_TRADE_SYMBOL_OPTIONS);
-  const activeView = getDashboardView(pathname);
+  const activeView = optimisticView;
   const setActiveView = useCallback((nextView: DashboardView) => {
     if (nextView === activeView) return;
-    router.push(DASHBOARD_ROUTES[nextView]);
+    setOptimisticView(nextView);
+    React.startTransition(() => {
+      router.push(DASHBOARD_ROUTES[nextView]);
+    });
   }, [activeView, router]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setOptimisticView(routeView);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [routeView]);
+
+  useEffect(() => {
+    Object.values(DASHBOARD_ROUTES).forEach((route) => {
+      router.prefetch(route);
+    });
+
+    const preloadViews = () => {
+      [BotTradeView, ManualTradeView, WalletView, SettingsView, LogsView].forEach((Component) => {
+        (Component as unknown as PreloadableComponent).preload?.();
+      });
+    };
+
+    if ("requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(preloadViews, { timeout: 2500 });
+      return () => window.cancelIdleCallback(idleId);
+    }
+
+    const timer = setTimeout(preloadViews, 1200);
+    return () => clearTimeout(timer);
+  }, [router]);
 
   // Manual Trade Form States
   const [tradeSymbol, setTradeSymbol] = useState("");
@@ -382,7 +415,8 @@ export default function DashboardPageClient() {
   const [confirmPanicOpen, setConfirmPanicOpen] = useState(false);
   const [panicTargetSymbol, setPanicTargetSymbol] = useState("");
   const [actionLoading, setActionLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const hasCompletedInitialLoadRef = useRef(false);
   const [, setBotConfigDirty] = useState(false);
   const [settingsSaveState, setSettingsSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const botConfigDirtyRef = useRef(false);
@@ -673,7 +707,6 @@ export default function DashboardPageClient() {
   // ----------------------------------------------------
   useEffect(() => {
     let isCancelled = false;
-    setInitialLoading(true);
 
     const loadInitialData = async () => {
       const initialRequests: Promise<void>[] = [
@@ -693,8 +726,12 @@ export default function DashboardPageClient() {
 
       await Promise.allSettled(initialRequests);
       if (isCancelled) return;
-      addDevLog("แผงควบคุมแดชบอร์ด Next.js เริ่มต้นทำงานสำเร็จ", "success");
-      setInitialLoading(false);
+
+      if (!hasCompletedInitialLoadRef.current) {
+        hasCompletedInitialLoadRef.current = true;
+        addDevLog("แผงควบคุมแดชบอร์ด Next.js เริ่มต้นทำงานสำเร็จ", "success");
+        setInitialLoading(false);
+      }
     };
 
     loadInitialData();

@@ -1,21 +1,21 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useRouter } from "next/navigation";
-import { 
-  Box, 
-  Button, 
-  TextField, 
-  Typography, 
-  Alert, 
-  CircularProgress,
-  InputAdornment,
+import {
+  Alert,
+  Box,
+  Button,
   Card,
   CardContent,
+  CircularProgress,
   Container,
-  Stack
+  InputAdornment,
+  Stack,
+  TextField,
+  Typography,
 } from "@mui/material";
-import { Zap, User, Lock } from "lucide-react";
+import { Lock, ShieldCheck, User } from "lucide-react";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,10 +24,15 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Clean error on input change
-  useEffect(() => {
+  const updateUsername = (value: string) => {
+    setUsername(value);
     if (error) setError("");
-  }, [username, password]);
+  };
+
+  const updatePassword = (value: string) => {
+    setPassword(value);
+    if (error) setError("");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,178 +51,138 @@ export default function LoginPage() {
       if (res.ok && data.status === "success") {
         router.push("/");
       } else {
-        setError(data.detail || data.message || "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง");
+        setError(data.detail || data.message || "Username or password is incorrect.");
       }
-    } catch (err) {
-      setError("เกิดข้อผิดพลาดในการเชื่อมต่อเซิร์ฟเวอร์");
+    } catch {
+      setError("Unable to connect to the server. Please try again.");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Box 
+    <Box
       sx={{
         minHeight: "100vh",
+        position: "relative",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        position: "relative",
-        px: 2,
         overflow: "hidden",
-        backgroundImage: "linear-gradient(rgba(255, 255, 255, 0.005) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.005) 1px, transparent 1px)",
-        backgroundSize: "32px 32px",
+        px: { xs: 2, sm: 3 },
+        py: 4,
+        background: "linear-gradient(180deg, rgba(9, 12, 18, 0.98) 0%, rgba(5, 8, 13, 1) 100%)",
       }}
     >
-      {/* Background glass blur effect */}
-      <Box 
+      <Box
         sx={{
-          position: "fixed",
+          position: "absolute",
           inset: 0,
-          backdropFilter: "blur(100px)",
-          zIndex: -1,
-        }} 
-      />
-      
-      {/* Glowing background bubbles */}
-      <Box 
-        sx={{
-          position: "fixed",
-          borderRadius: "50%",
-          filter: "blur(120px)",
-          zIndex: -2,
-          opacity: 0.12,
-          width: 500,
-          height: 500,
-          backgroundColor: "primary.main",
-          bottom: "-10%",
-          left: "-10%",
-          animation: "pulse 8s infinite ease-in-out",
-          "@keyframes pulse": {
-            "0%, 100%": { transform: "scale(1)", opacity: 0.08 },
-            "50%": { transform: "scale(1.15)", opacity: 0.16 }
-          }
-        }} 
-      />
-      
-      <Box 
-        sx={{
-          position: "fixed",
-          borderRadius: "50%",
-          filter: "blur(120px)",
-          zIndex: -2,
-          opacity: 0.1,
-          width: 400,
-          height: 400,
-          backgroundColor: "secondary.main",
-          top: "-5%",
-          right: "-5%",
-          animation: "pulse-reverse 10s infinite ease-in-out",
-          "@keyframes pulse-reverse": {
-            "0%, 100%": { transform: "scale(1.1)", opacity: 0.1 },
-            "50%": { transform: "scale(0.9)", opacity: 0.05 }
-          }
-        }} 
+          pointerEvents: "none",
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,0.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.018) 1px, transparent 1px)",
+          backgroundSize: "28px 28px",
+          maskImage: "linear-gradient(180deg, rgba(0,0,0,0.7), transparent 72%)",
+        }}
       />
 
-      <Container maxWidth="xs" sx={{ zIndex: 1 }}>
-        <Card 
+      <Container maxWidth="xs" sx={{ position: "relative", zIndex: 1 }}>
+        <Box sx={{ mb: 2.5, textAlign: "center" }}>
+          <Box
+            sx={{
+              mx: "auto",
+              mb: 1.5,
+              width: 44,
+              height: 44,
+              borderRadius: "12px",
+              display: "grid",
+              placeItems: "center",
+              color: "#00c16a",
+              backgroundColor: "rgba(0, 193, 106, 0.08)",
+              border: "1px solid rgba(0, 193, 106, 0.18)",
+            }}
+          >
+            <ShieldCheck size={22} />
+          </Box>
+          <Typography
+            component="h1"
+            sx={{
+              color: "text.primary",
+              fontFamily: "Outfit, sans-serif",
+              fontSize: { xs: "1.35rem", sm: "1.5rem" },
+              fontWeight: 800,
+              letterSpacing: 0,
+              lineHeight: 1.2,
+            }}
+          >
+            Bitkub Trading Console
+          </Typography>
+          <Typography sx={{ mt: 0.7, color: "text.secondary", fontSize: "0.86rem" }}>
+            Sign in to manage your automated trading workspace.
+          </Typography>
+        </Box>
+
+        <Card
           sx={{
-            background: "rgba(13, 19, 33, 0.45)",
-            backdropFilter: "blur(20px)",
-            border: "1px solid rgba(255, 255, 255, 0.04)",
-            borderRadius: "24px",
-            boxShadow: "0 20px 50px rgba(0, 0, 0, 0.55)",
+            background: "rgba(10, 15, 24, 0.86)",
+            backdropFilter: "blur(18px)",
+            border: "1px solid rgba(255, 255, 255, 0.075)",
+            borderRadius: "14px",
+            boxShadow: "0 24px 70px rgba(0, 0, 0, 0.42)",
             overflow: "hidden",
-            "&:hover": {
-              borderColor: "rgba(0, 193, 106, 0.2)",
-              boxShadow: "0 24px 60px rgba(0, 193, 106, 0.06)",
-            }
           }}
         >
-          <CardContent sx={{ p: { xs: 4, sm: 5 } }}>
-            {/* Brand Header */}
-            <Box sx={{ display: "flex", flexDirection: "column", alignItems: "center", mb: 4, textAlign: "center" }}>
-              <Box 
-                sx={{
-                  mb: 2.5,
-                  p: 1.5,
-                  borderRadius: "16px",
-                  background: "rgba(0, 193, 106, 0.08)",
-                  border: "1px solid rgba(0, 193, 106, 0.15)",
-                  color: "primary.main",
-                  filter: "drop-shadow(0 0 12px rgba(0, 193, 106, 0.3))",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                <Zap size={32} />
-              </Box>
-              <Typography 
-                variant="h4" 
-                component="h1"
-                sx={{
-                  fontWeight: 600,
-                  letterSpacing: 0,
-                  background: "linear-gradient(90deg, #ffffff 30%, #e2e8f0 60%, #00c16a 100%)",
-                  WebkitBackgroundClip: "text",
-                  WebkitTextFillColor: "transparent",
-                  fontFamily: "Outfit, sans-serif",
-                }}
-              >
-                Bitkub API Hub
+          <CardContent sx={{ p: { xs: 2.5, sm: 3 } }}>
+            <Box sx={{ mb: 2.5 }}>
+              <Typography sx={{ color: "text.primary", fontSize: "1rem", fontWeight: 800, fontFamily: "Outfit, sans-serif" }}>
+                Secure Login
               </Typography>
-              <Typography sx={{ color: "text.secondary", fontSize: "0.8rem", mt: 1 }}>
-                กรุณาลงชื่อเข้าใช้งานแดชบอร์ด
+              <Typography sx={{ color: "text.secondary", fontSize: "0.78rem", mt: 0.35 }}>
+                Use your dashboard credentials to continue.
               </Typography>
             </Box>
 
-            {/* Error Message */}
             {error && (
-              <Alert 
-                severity="error" 
+              <Alert
+                severity="error"
                 variant="outlined"
                 sx={{
-                  mb: 3,
+                  mb: 2.25,
                   backgroundColor: "rgba(239, 91, 99, 0.05)",
                   borderColor: "rgba(239, 91, 99, 0.2)",
                   color: "#ff7a82",
-                  borderRadius: "12px",
-                  fontSize: "0.75rem",
+                  borderRadius: "8px",
+                  fontSize: "0.76rem",
                   fontWeight: 600,
-                  "& .MuiAlert-icon": { color: "#ef5b63" }
+                  "& .MuiAlert-icon": { color: "#ef5b63" },
                 }}
               >
                 {error}
               </Alert>
             )}
 
-            {/* Login Form */}
             <form onSubmit={handleSubmit}>
-              <Stack spacing={3.5}>
-                {/* Username Input */}
+              <Stack spacing={2}>
                 <Box>
-                  <Typography 
+                  <Typography
                     sx={{
                       fontSize: "0.75rem",
                       fontWeight: 700,
                       color: "text.secondary",
                       textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      mb: 1,
-                      pl: 0.5
+                      letterSpacing: "0.06em",
+                      mb: 0.75,
                     }}
                   >
-                    ชื่อผู้ใช้ (Username)
+                    Username
                   </Typography>
                   <TextField
                     fullWidth
-                    variant="outlined"
-                    placeholder="ระบุ Username"
                     required
+                    variant="outlined"
+                    placeholder="Enter username"
                     value={username}
-                    onChange={(e) => setUsername(e.target.value)}
+                    onChange={(e) => updateUsername(e.target.value)}
                     autoComplete="username"
                     disabled={loading}
                     slotProps={{
@@ -232,29 +197,27 @@ export default function LoginPage() {
                   />
                 </Box>
 
-                {/* Password Input */}
                 <Box>
-                  <Typography 
+                  <Typography
                     sx={{
                       fontSize: "0.75rem",
                       fontWeight: 700,
                       color: "text.secondary",
                       textTransform: "uppercase",
-                      letterSpacing: "0.08em",
-                      mb: 1,
-                      pl: 0.5
+                      letterSpacing: "0.06em",
+                      mb: 0.75,
                     }}
                   >
-                    รหัสผ่าน (Password)
+                    Password
                   </Typography>
                   <TextField
                     fullWidth
+                    required
                     variant="outlined"
                     type="password"
-                    placeholder="ระบุ Password"
-                    required
+                    placeholder="Enter password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => updatePassword(e.target.value)}
                     autoComplete="current-password"
                     disabled={loading}
                     slotProps={{
@@ -269,41 +232,40 @@ export default function LoginPage() {
                   />
                 </Box>
 
-                {/* Submit Button */}
                 <Button
                   fullWidth
                   type="submit"
                   variant="contained"
                   disabled={loading}
                   sx={{
-                    py: 1.8,
+                    mt: 0.5,
+                    py: 1.35,
                     fontSize: "0.875rem",
-                    fontWeight: 600,
-                    borderRadius: "12px",
-                    background: "linear-gradient(90deg, #00c16a 0%, #14b8a6 50%, #00a85d 100%)",
-                    color: "#102018",
-                    boxShadow: "0 4px 20px rgba(0, 193, 106, 0.2)",
+                    fontWeight: 800,
+                    borderRadius: "9px",
+                    backgroundColor: "#00c16a",
+                    color: "#06120d",
+                    boxShadow: "0 12px 28px rgba(0, 193, 106, 0.16)",
                     "&:hover": {
-                      background: "linear-gradient(90deg, #1fe385 0%, #2dd4bf 50%, #00a85d 100%)",
-                      boxShadow: "0 6px 25px rgba(0, 193, 106, 0.35)",
-                      transform: "scale(1.01)"
+                      backgroundColor: "#14d87d",
+                      boxShadow: "0 14px 34px rgba(0, 193, 106, 0.22)",
                     },
                     "&.Mui-disabled": {
-                      background: "rgba(255, 255, 255, 0.05)",
+                      backgroundColor: "rgba(255, 255, 255, 0.05)",
                       color: "rgba(255, 255, 255, 0.3)",
-                    }
+                    },
                   }}
                 >
-                  {loading ? (
-                    <CircularProgress size={20} color="inherit" />
-                  ) : (
-                    "ลงชื่อเข้าใช้งาน"
-                  )}
+                  {loading ? <CircularProgress size={20} color="inherit" /> : "Sign In"}
                 </Button>
               </Stack>
             </form>
           </CardContent>
         </Card>
+
+        <Typography sx={{ mt: 2, textAlign: "center", color: "rgba(148, 163, 184, 0.72)", fontSize: "0.72rem" }}>
+          Protected access for bot settings, wallet data, and trade operations.
+        </Typography>
       </Container>
     </Box>
   );

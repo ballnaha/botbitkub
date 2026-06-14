@@ -19,17 +19,24 @@ export interface AgentSpriteConfig {
   frameHeight: number;
   /** Frames per second of the loop. Default 6. */
   fps?: number;
-  /** Integer upscale for the pixel art. Default 2. */
+  /** Integer upscale for the pixel art. Default 2. Ignored when fitWidth/fitHeight are set. */
   scale?: number;
+  /** Scale to fit inside this width (px). Use with fitHeight for contain-scaling. */
+  fitWidth?: number;
+  /** Scale to fit inside this height (px). Use with fitWidth for contain-scaling. */
+  fitHeight?: number;
 }
 
 interface AgentSpriteProps extends AgentSpriteConfig {
   active?: boolean;
 }
 
-export function AgentSprite({ src, frames, frameWidth, frameHeight, fps = 6, scale = 2, active = true }: AgentSpriteProps) {
-  const w = frameWidth * scale;
-  const h = frameHeight * scale;
+export function AgentSprite({ src, frames, frameWidth, frameHeight, fps = 6, scale = 2, fitWidth, fitHeight, active = true }: AgentSpriteProps) {
+  const computedScale = fitWidth && fitHeight
+    ? Math.min(fitWidth / frameWidth, fitHeight / frameHeight)
+    : scale;
+  const w = frameWidth * computedScale;
+  const h = frameHeight * computedScale;
   const duration = frames / fps;
 
   return (

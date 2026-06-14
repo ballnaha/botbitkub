@@ -13,7 +13,7 @@
     "cooldown_minutes": 10,
     "cooldown_after_loss_only": true,
     "price_poll_seconds": 5,
-    "regime_filter_enabled": false,
+    "regime_filter_enabled": true,
     "regime_reference_symbol": "BTC/THB",
     "regime_timeframe": "240",
     "regime_ema_period": 200,
@@ -21,14 +21,14 @@
     "regime_reduce_factor": 0.5,
     "trade_direction": "long",
     "leverage": 1,
-    "ai_enabled": true,
+    "ai_enabled": false,
     "ai_provider": "deepseek",
     "ai_model": "deepseek-v4-pro",
-    "ai_min_score": 75,
-    "ai_min_confidence": 0.65,
+    "ai_min_score": 58,
+    "ai_min_confidence": 0.48,
     "ai_timeout_seconds": 20.0,
     "min_sell_value_thb": 10.0,
-    "market_universe_mode": "fixed",
+    "market_universe_mode": "top_gainers",
     "top_gainers_limit": 20,
     "symbols": [
         "BTC/THB",
@@ -54,5 +54,5 @@
         "VVV/THB"
     ],
     "timeframe": "15",
-    "strategy": "macd_rsi"
+    "strategy": "volume_breakout"
 }
